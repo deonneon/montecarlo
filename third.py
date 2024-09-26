@@ -33,7 +33,7 @@ def simulate_hours(date):
 data["Total_Hours"] = data["Date"].apply(simulate_hours)
 
 # Aggregate to weekly data
-data["Week_End"] = data["Date"] + pd.to_timedelta(
+data.loc[:, "Week_End"] = data["Date"] + pd.to_timedelta(
     (4 - data["Date"].dt.dayofweek) % 7, unit="D"
 )
 weekly_data = data.groupby("Week_End")["Total_Hours"].sum().reset_index()
@@ -86,3 +86,29 @@ plt.xlabel("Week Ending Date")
 plt.ylabel("Total Hours")
 plt.legend()
 plt.show()
+
+
+# Combine historical data, forecasts, and confidence intervals
+combined_data = pd.concat(
+    [
+        train_data,
+        pd.DataFrame(
+            {
+                "Total_Hours": test_data["Total_Hours"],
+                "Deterministic_Forecast": hw_forecast,
+                "Monte_Carlo_Forecast": forecast_mean,
+                "Confidence_Interval_5": confidence_interval_5,
+                "Confidence_Interval_95": confidence_interval_95,
+            }
+        ),
+    ]
+)
+
+# Reset index to make the date a column
+combined_data = combined_data.reset_index()
+
+# Rename the index column to 'Date' for clarity
+combined_data = combined_data.rename(columns={"Week_End": "Date"})
+
+# Ensure all date values are in a consistent format
+combined_data["Date"] = pd.to_datetime(combined_data["Date"])
