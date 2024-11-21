@@ -114,38 +114,3 @@ combined_data["Confidence_Interval_5_Per_Employee"] = (
 combined_data["Confidence_Interval_95_Per_Employee"] = (
     combined_data["Confidence_Interval_95"] / combined_data["Employee_Count"]
 )
-
-# Step 3: Visualize the per-employee results
-plt.figure(figsize=(12, 6))
-plt.plot(
-    combined_data["Date"],
-    combined_data["Total_Hours_Per_Employee"],
-    label="Historical Total Hours per Employee",
-)
-plt.plot(
-    combined_data["Date"],
-    combined_data["Deterministic_Forecast_Per_Employee"],
-    label="Deterministic Forecast per Employee",
-    linestyle="--",
-)
-plt.plot(
-    combined_data["Date"],
-    combined_data["Monte_Carlo_Forecast_Per_Employee"],
-    label="Monte Carlo Forecast Mean per Employee",
-    linestyle="--",
-)
-plt.fill_between(
-    combined_data["Date"],
-    combined_data["Confidence_Interval_5_Per_Employee"],
-    combined_data["Confidence_Interval_95_Per_Employee"],
-    color="gray",
-    alpha=0.3,
-    label="90% Confidence Interval per Employee",
-)
-plt.title("Total Hours per Employee Forecast with Monte Carlo Simulation")
-plt.xlabel("Week Ending Date")
-plt.ylabel("Total Hours per Employee")
-plt.legend()
-plt.show()
-
-# Step 4: Additional confidence interval calculation if needed

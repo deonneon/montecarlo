@@ -1,0 +1,105 @@
+import pandas as pd
+import random
+from datetime import datetime, timedelta
+
+# Define parameters for the dataset
+start_date = datetime(2023, 1, 1)
+end_date = datetime(2023, 12, 31)
+total_days = (end_date - start_date).days + 1
+num_employees_start = 50
+num_employees_end = 70
+dept_list = ["Assembly", "Quality", "Maintenance", "Logistics", "Management"]
+holidays = [
+    datetime(2023, 1, 1),  # New Year's Day
+    datetime(2023, 1, 16),  # Martin Luther King Jr. Day
+    datetime(2023, 2, 20),  # Presidents' Day
+    datetime(2023, 5, 29),  # Memorial Day
+    datetime(2023, 6, 19),  # Juneteenth National Independence Day
+    datetime(2023, 7, 4),  # Independence Day
+    datetime(2023, 9, 4),  # Labor Day
+    datetime(2023, 10, 9),  # Columbus Day (or Indigenous Peoples' Day in some states)
+    datetime(2023, 11, 10),  # Veterans Day (observed since 11th falls on a Saturday)
+    datetime(2023, 11, 23),  # Thanksgiving Day
+    datetime(2023, 12, 25),  # Christmas Day
+]
+
+# Generate employee IDs
+employees = [f"EMP{str(i).zfill(3)}" for i in range(1, num_employees_end + 1)]
+
+
+# Helper function to generate labor hours for a single day
+def generate_daily_labor(userid, date, dept):
+    is_holiday = date in holidays
+    base_hours = 0 if is_holiday else random.uniform(6, 8)
+    overtime_hours = (
+        0 if is_holiday else random.uniform(0, 2) if random.random() < 0.3 else 0
+    )
+    direct_hours = round(base_hours * random.uniform(0.6, 0.9), 2)
+    non_direct_hours = round(base_hours - direct_hours, 2) if base_hours > 0 else 0
+    return {
+        "userid": userid,
+        "dept": dept,
+        "date": date,
+        "total_hours_charged": round(base_hours + overtime_hours, 2),
+        "direct_hours": direct_hours,
+        "non_direct_hours": non_direct_hours,
+        "overtime_hours": round(overtime_hours, 2),
+        "is_holiday": is_holiday,
+    }
+
+
+# Create a growing employee base
+daily_data = []
+for day in range(total_days):
+    current_date = start_date + timedelta(days=day)
+    current_employee_count = num_employees_start + int(
+        (num_employees_end - num_employees_start) * (day / total_days)
+    )
+    sampled_employees = random.sample(employees, current_employee_count)
+    for userid in sampled_employees:
+        dept = random.choice(dept_list)
+        daily_data.append(generate_daily_labor(userid, current_date, dept))
+
+# Convert the data into a DataFrame
+labor_data_df = pd.DataFrame(daily_data)
+
+
+# Adjusting seasonal trends to match manufacturing preferences
+def adjust_manufacturing_seasonality(df):
+    df["month"] = df["date"].dt.month
+
+    # Updated seasonal adjustment factors
+    manufacturing_seasonal_factors = {
+        1: 0.92,
+        2: 0.96,
+        3: 1.08,
+        4: 1.1,
+        5: 0.95,
+        6: 0.92,
+        7: 0.88,
+        8: 0.96,
+        9: 0.97,
+        10: 1.15,
+        11: 0.95,
+        12: 0.85,
+    }
+
+    # Apply manufacturing-specific seasonal adjustments
+    df["seasonal_factor"] = df["month"].map(manufacturing_seasonal_factors)
+    df["total_hours_charged"] = round(
+        df["total_hours_charged"] * df["seasonal_factor"], 2
+    )
+    df["direct_hours"] = round(df["direct_hours"] * df["seasonal_factor"], 2)
+    df["non_direct_hours"] = round(df["non_direct_hours"] * df["seasonal_factor"], 2)
+    df["overtime_hours"] = round(df["overtime_hours"] * df["seasonal_factor"], 2)
+
+    # Clean up the temporary columns
+    df.drop(columns=["month", "seasonal_factor"], inplace=True)
+    return df
+
+
+# Apply the manufacturing-specific seasonal trends
+manufacturing_labor_data_df = adjust_manufacturing_seasonality(labor_data_df)
+
+# Save the DataFrame to a CSV file
+labor_data_df.to_csv("sampledata/labor_data.csv", index=False)
