@@ -7,6 +7,36 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from microstrategy_export import MicroStrategyExporter
+
+
+def export_for_microstrategy(daily_data, forecast_results):
+    """Export data in MicroStrategy-compatible format"""
+    try:
+        exporter = MicroStrategyExporter()
+
+        # Create directory if it doesn't exist
+        os.makedirs("data/microstrategy", exist_ok=True)
+
+        # Prepare and export labor data
+        labor_data = exporter.prepare_labor_data(daily_data)
+        exporter.export_to_json(labor_data, "data/microstrategy/labor_data.json")
+
+        # Prepare and export forecast data
+        forecast_data = exporter.prepare_forecast_data(forecast_results)
+        exporter.export_to_json(forecast_data, "data/microstrategy/forecast_data.json")
+
+        # Generate SQL queries
+        sql_queries = exporter.generate_sql_queries()
+        with open("data/microstrategy/queries.sql", "w") as f:
+            for name, query in sql_queries.items():
+                f.write(f"-- {name}\n{query}\n\n")
+
+        print("Successfully exported data for MicroStrategy")
+
+    except Exception as e:
+        print(f"Error exporting data for MicroStrategy: {str(e)}")
+
 
 def main():
     # Initialize components with fiscal year settings
@@ -42,6 +72,15 @@ def main():
     # Visualize results
     plot_results(daily_data, mean_forecast, lower_bound, upper_bound)
     plot_fiscal_pattern(fiscal_pattern)
+
+    # Export for MicroStrategy
+    forecast_results = {
+        "mean_forecast": mean_forecast,
+        "lower_bound": lower_bound,
+        "upper_bound": upper_bound,
+        "start_date": daily_data["date"].max().strftime("%Y-%m-%d"),
+    }
+    export_for_microstrategy(daily_data, forecast_results)
 
     return labor_kpis
 
