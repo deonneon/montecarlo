@@ -1,6 +1,7 @@
 import dash
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+from dash import clientside_callback, ClientsideFunction
 import plotly.graph_objs as go
 import plotly.express as px
 import pandas as pd
@@ -11,6 +12,7 @@ from time_series_model import TimeSeriesPredictor
 from monte_carlo import MonteCarloSimulator
 from worker_monte_carlo import WorkerMonteCarloPredictor
 from plotly.subplots import make_subplots
+from hybrid_predictor import HybridLaborPredictor
 
 # Initialize the Dash app
 app = dash.Dash(
@@ -35,10 +37,10 @@ app.layout = html.Div(
             "Manufacturing Labor Analytics Dashboard",
             style={
                 "textAlign": "center",
-                "margin-bottom": "30px",
+                "marginBottom": "30px",
                 "padding": "20px",
-                "background-color": "#f8f9fa",
-                "border-radius": "10px",
+                "backgroundColor": "#f8f9fa",
+                "borderRadius": "10px",
             },
         ),
         # Filters Container
@@ -50,8 +52,8 @@ app.layout = html.Div(
                         html.Label(
                             "Date Range:",
                             style={
-                                "margin-bottom": "10px",
-                                "font-weight": "bold",
+                                "marginBottom": "10px",
+                                "fontWeight": "bold",
                                 "display": "block",
                             },
                         ),
@@ -66,8 +68,8 @@ app.layout = html.Div(
                     style={
                         "width": "30%",
                         "display": "inline-block",
-                        "margin-right": "20px",
-                        "vertical-align": "top",
+                        "marginRight": "20px",
+                        "verticalAlign": "top",
                     },
                 ),
                 # Department Filter
@@ -76,8 +78,8 @@ app.layout = html.Div(
                         html.Label(
                             "Department:",
                             style={
-                                "margin-bottom": "10px",
-                                "font-weight": "bold",
+                                "marginBottom": "10px",
+                                "fontWeight": "bold",
                                 "display": "block",
                             },
                         ),
@@ -96,16 +98,16 @@ app.layout = html.Div(
                     style={
                         "width": "30%",
                         "display": "inline-block",
-                        "vertical-align": "top",
+                        "verticalAlign": "top",
                     },
                 ),
             ],
             style={
                 "margin": "20px",
                 "padding": "20px",
-                "background-color": "#f8f9fa",
-                "border-radius": "10px",
-                "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                "backgroundColor": "#f8f9fa",
+                "borderRadius": "10px",
+                "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
             },
         ),
         # KPI Cards Container
@@ -151,7 +153,7 @@ app.layout = html.Div(
             ],
             style={
                 "display": "flex",
-                "justify-content": "space-around",
+                "justifyContent": "space-around",
                 "margin": "20px",
                 "padding": "10px",
             },
@@ -164,10 +166,10 @@ app.layout = html.Div(
                     dcc.Graph(id="labor-trend"),
                     style={
                         "width": "100%",
-                        "margin-bottom": "20px",
-                        "background-color": "#fff",
-                        "border-radius": "10px",
-                        "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                        "marginBottom": "20px",
+                        "backgroundColor": "#fff",
+                        "borderRadius": "10px",
+                        "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
                         "padding": "15px",
                     },
                 ),
@@ -180,11 +182,11 @@ app.layout = html.Div(
                             style={
                                 "width": "48%",
                                 "display": "inline-block",
-                                "background-color": "#fff",
-                                "border-radius": "10px",
-                                "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                                "backgroundColor": "#fff",
+                                "borderRadius": "10px",
+                                "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
                                 "padding": "15px",
-                                "margin-right": "2%",
+                                "marginRight": "2%",
                             },
                         ),
                         # Forecast Chart
@@ -193,25 +195,25 @@ app.layout = html.Div(
                             style={
                                 "width": "48%",
                                 "display": "inline-block",
-                                "background-color": "#fff",
-                                "border-radius": "10px",
-                                "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                                "backgroundColor": "#fff",
+                                "borderRadius": "10px",
+                                "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
                                 "padding": "15px",
                             },
                         ),
                     ],
-                    style={"display": "flex", "justify-content": "space-between"},
+                    style={"display": "flex", "justifyContent": "space-between"},
                 ),
                 # Fiscal Year Results
                 html.Div(
                     dcc.Graph(id="fiscal-year-plot"),
                     style={
                         "width": "100%",
-                        "margin-top": "20px",
-                        "margin-bottom": "20px",
-                        "background-color": "#fff",
-                        "border-radius": "10px",
-                        "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                        "marginTop": "20px",
+                        "marginBottom": "20px",
+                        "backgroundColor": "#fff",
+                        "borderRadius": "10px",
+                        "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
                         "padding": "15px",
                     },
                 ),
@@ -219,9 +221,9 @@ app.layout = html.Div(
                 html.Div(
                     dcc.Graph(id="fiscal-pattern-plot"),
                     style={
-                        "background-color": "#fff",
-                        "border-radius": "10px",
-                        "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                        "backgroundColor": "#fff",
+                        "borderRadius": "10px",
+                        "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
                         "padding": "15px",
                     },
                 ),
@@ -259,8 +261,158 @@ app.layout = html.Div(
             ],
             style={"margin": "20px", "padding": "20px"},
         ),
+        # Hybrid Forecast Section
+        html.Div(
+            [
+                # Header for Hybrid Forecast Section
+                html.H3(
+                    "Hybrid Labor Forecast Analysis",
+                    style={"marginBottom": "20px", "textAlign": "center"},
+                ),
+                # Control Panel
+                html.Div(
+                    [
+                        # Forecast Settings
+                        html.Div(
+                            [
+                                html.Label(
+                                    "Forecast Settings:",
+                                    style={
+                                        "fontWeight": "bold",
+                                        "marginBottom": "10px",
+                                    },
+                                ),
+                                dcc.Checklist(
+                                    id="forecast-options",
+                                    options=[
+                                        {
+                                            "label": " Include Seasonality",
+                                            "value": "seasonality",
+                                        },
+                                        {
+                                            "label": " Include Growth Projections",
+                                            "value": "growth",
+                                        },
+                                    ],
+                                    value=["seasonality", "growth"],
+                                    style={"marginBottom": "15px"},
+                                ),
+                            ],
+                            style={
+                                "width": "30%",
+                                "display": "inline-block",
+                                "marginRight": "20px",
+                            },
+                        ),
+                        # Forecast Horizon Selector
+                        html.Div(
+                            [
+                                html.Label(
+                                    "Forecast Horizon:",
+                                    style={
+                                        "fontWeight": "bold",
+                                        "marginBottom": "10px",
+                                    },
+                                ),
+                                dcc.Slider(
+                                    id="forecast-horizon",
+                                    min=7,
+                                    max=90,
+                                    step=7,
+                                    value=30,
+                                    marks={i: f"{i}d" for i in range(7, 91, 7)},
+                                    tooltip={
+                                        "placement": "bottom",
+                                        "always_visible": True,
+                                    },
+                                ),
+                            ],
+                            style={"width": "60%", "display": "inline-block"},
+                        ),
+                    ],
+                    style={
+                        "marginBottom": "20px",
+                        "padding": "15px",
+                        "backgroundColor": "#f8f9fa",
+                        "borderRadius": "10px",
+                    },
+                ),
+                # Main Forecast Chart
+                html.Div(
+                    [dcc.Graph(id="hybrid-forecast-chart")],
+                    style={"marginBottom": "20px"},
+                ),
+                # Metrics Row
+                html.Div(
+                    [
+                        # Confidence Metrics Card
+                        html.Div(
+                            [
+                                html.H5("Confidence Metrics"),
+                                html.Div(
+                                    id="confidence-metrics", className="metric-content"
+                                ),
+                            ],
+                            className="metric-card",
+                        ),
+                        # Model Weights Card
+                        html.Div(
+                            [
+                                html.H5("Model Weights"),
+                                html.Div(
+                                    id="model-weights", className="metric-content"
+                                ),
+                            ],
+                            className="metric-card",
+                        ),
+                        # Forecast Accuracy Card
+                        html.Div(
+                            [
+                                html.H5("Forecast Accuracy"),
+                                html.Div(
+                                    id="forecast-accuracy", className="metric-content"
+                                ),
+                            ],
+                            className="metric-card",
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "marginBottom": "20px",
+                    },
+                ),
+                # Department Breakdown
+                html.Div(
+                    [
+                        html.H4(
+                            "Department-Level Forecasts",
+                            style={"marginBottom": "15px"},
+                        ),
+                        dcc.Graph(id="dept-forecast-breakdown"),
+                    ],
+                    style={"marginBottom": "20px"},
+                ),
+            ],
+            style={
+                "margin": "20px",
+                "padding": "20px",
+                "backgroundColor": "#ffffff",
+                "borderRadius": "10px",
+                "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
+            },
+        ),
     ],
-    style={"background-color": "#f0f2f5", "min-height": "100vh", "padding": "20px"},
+    style={"backgroundColor": "#f0f2f5", "minHeight": "100vh", "padding": "20px"},
+)
+
+# Add this after your app layout
+app.clientside_callback(
+    ClientsideFunction(namespace="clientside", function_name="toggle_growth"),
+    Output("hybrid-forecast-chart", "figure", allow_duplicate=True),
+    Input("forecast-options", "value"),
+    State("hybrid-forecast-chart", "figure"),
+    prevent_initial_call=True,
 )
 
 
@@ -278,7 +430,7 @@ app.layout = html.Div(
     ],
 )
 def update_kpis(start_date, end_date, selected_dept):
-    filtered_data = filter_data(start_date, end_date, selected_dept)
+    filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
     total_hours = f"{filtered_data['total_hours_charged'].sum():,.0f}"
 
@@ -297,6 +449,7 @@ def update_kpis(start_date, end_date, selected_dept):
     return total_hours, efficiency, overtime
 
 
+# Update labor trend callback
 @app.callback(
     Output("labor-trend", "figure"),
     [
@@ -306,7 +459,7 @@ def update_kpis(start_date, end_date, selected_dept):
     ],
 )
 def update_labor_trend(start_date, end_date, selected_dept):
-    filtered_data = filter_data(start_date, end_date, selected_dept)
+    filtered_data, _ = filter_data(start_date, end_date, selected_dept)
     print("Available columns:", filtered_data.columns)  # Debug print
 
     # Create subplot figure with two rows
@@ -461,7 +614,7 @@ def update_dept_comparison(start_date, end_date):
     return fig
 
 
-# Forecast callback
+# Update forecast callback
 @app.callback(
     Output("forecast", "figure"),
     [
@@ -471,8 +624,7 @@ def update_dept_comparison(start_date, end_date):
     ],
 )
 def update_forecast(start_date, end_date, selected_dept):
-    # Filter data
-    filtered_data = filter_data(start_date, end_date, selected_dept)
+    filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
     # Fit time series model
     ts_data = filtered_data["total_hours_charged"].values
@@ -553,6 +705,7 @@ def update_forecast(start_date, end_date, selected_dept):
     return fig
 
 
+# Update fiscal year plot callback
 @app.callback(
     Output("fiscal-year-plot", "figure"),
     [
@@ -562,7 +715,7 @@ def update_forecast(start_date, end_date, selected_dept):
     ],
 )
 def update_fiscal_year_plot(start_date, end_date, selected_dept):
-    filtered_data = filter_data(start_date, end_date, selected_dept)
+    filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
     # Fit time series model
     ts_data = filtered_data["total_hours_charged"].values
@@ -663,7 +816,7 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
     return fig
 
 
-# Fiscal Pattern Plot callback
+# Update fiscal pattern plot callback
 @app.callback(
     Output("fiscal-pattern-plot", "figure"),
     [
@@ -673,7 +826,7 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
     ],
 )
 def update_fiscal_pattern_plot(start_date, end_date, selected_dept):
-    filtered_data = filter_data(start_date, end_date, selected_dept)
+    filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
     # Calculate mean and std by fiscal period
     fiscal_pattern = (
@@ -1141,30 +1294,194 @@ def update_average_hours_predictions(selected_dept):
     return fig
 
 
+# Update hybrid forecast callback
+@app.callback(
+    Output("hybrid-forecast-chart", "figure"),
+    [
+        Input("date-picker", "start_date"),
+        Input("date-picker", "end_date"),
+        Input("department-filter", "value"),
+        Input("forecast-horizon", "value"),
+        Input("forecast-options", "value"),
+    ],
+)
+def update_hybrid_forecast(
+    start_date, end_date, selected_dept, forecast_horizon, forecast_options
+):
+
+    try:
+        filtered_data, filtered_raw = filter_data(start_date, end_date, selected_dept)
+
+        if filtered_raw.empty:
+            return create_empty_figure("No data available for selected filters")
+
+        hybrid_predictor = HybridLaborPredictor()
+        include_seasonality = (
+            "seasonality" in forecast_options if forecast_options else False
+        )
+        include_growth = False
+
+        mean_forecast, lower_bound, upper_bound = (
+            hybrid_predictor.generate_hybrid_forecast(
+                filtered_raw,
+                forecast_horizon,
+                include_seasonality=include_seasonality,
+                include_growth=False,  # Always get base forecast
+            )
+        )
+
+        # Calculate growth rate once
+        growth_rate = hybrid_predictor.calculate_employee_growth_rate(filtered_raw)
+
+        # Create figure
+        fig = go.Figure()
+
+        last_date = pd.to_datetime(filtered_raw["date"].max())
+        forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[
+            1:
+        ]
+
+        # Structure customdata as arrays
+        historical_customdata = np.column_stack(
+            (
+                filtered_data["total_hours_charged"].values,
+                np.full(len(filtered_data), growth_rate),
+            )
+        )
+
+        forecast_customdata = np.column_stack(
+            (mean_forecast, np.full(len(mean_forecast), growth_rate))
+        )
+
+        upper_customdata = np.column_stack(
+            (upper_bound, np.full(len(upper_bound), growth_rate))
+        )
+
+        lower_customdata = np.column_stack(
+            (lower_bound, np.full(len(lower_bound), growth_rate))
+        )
+
+        # Add traces with properly structured customdata
+        fig.add_trace(
+            go.Scatter(
+                x=filtered_data["date"],
+                y=filtered_data["total_hours_charged"],
+                name="Historical",
+                line=dict(color="#2ecc71"),
+                customdata=historical_customdata,
+                hovertemplate="Date: %{x}<br>Hours: %{y:.1f}<extra></extra>",
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=forecast_dates,
+                y=mean_forecast,
+                name="Hybrid Forecast",
+                line=dict(color="#e74c3c", dash="dash"),
+                customdata=forecast_customdata,
+                hovertemplate="Date: %{x}<br>Forecast: %{y:.1f}<extra></extra>",
+            )
+        )
+
+        # Add confidence interval traces
+        fig.add_trace(
+            go.Scatter(
+                x=forecast_dates,
+                y=upper_bound,
+                mode="lines",
+                line=dict(width=0),
+                showlegend=False,
+                customdata=upper_customdata,
+                hovertemplate="Date: %{x}<br>Upper Bound: %{y:.1f}<extra></extra>",
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=forecast_dates,
+                y=lower_bound,
+                mode="lines",
+                fillcolor="rgba(231, 76, 60, 0.2)",
+                fill="tonexty",
+                showlegend=False,
+                customdata=lower_customdata,
+                hovertemplate="Date: %{x}<br>Lower Bound: %{y:.1f}<extra></extra>",
+            )
+        )
+
+        # Add historical average reference line
+        hist_avg = filtered_data["total_hours_charged"].mean()
+        fig.add_hline(
+            y=hist_avg,
+            line_dash="dot",
+            line_color="gray",
+            annotation_text="Historical Average",
+        )
+
+        # Update the title to show actual growth state from forecast_options
+        title = (
+            f"Hybrid Labor Hours Forecast<br>"
+            f"Seasonality: {'On' if include_seasonality else 'Off'} | "
+            f"Growth: {'On' if 'growth' in forecast_options else 'Off'}"
+        )
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="Date",
+            yaxis_title="Hours",
+            height=400,
+            template="plotly_white",
+            hovermode="x unified",
+            showlegend=True,
+        )
+
+        return fig
+
+    except Exception as e:
+        print(f"Error in update_hybrid_forecast: {str(e)}")  # Add debugging
+        return create_empty_figure(f"Error: {str(e)}")
+
+
+def create_empty_figure(message):
+    return go.Figure().update_layout(
+        title=message, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False)
+    )
+
+
 # Helper function to filter data
 def filter_data(start_date, end_date, selected_dept):
+    """Filter data for both aggregated and raw data views.
+    Returns a tuple of (filtered_agg, filtered_raw)"""
+
+    # Filter raw data
+    mask_raw = (raw_data["date"] >= start_date) & (raw_data["date"] <= end_date)
+    if selected_dept != "All":
+        mask_raw &= raw_data["dept"] == selected_dept
+    filtered_raw = raw_data[mask_raw].copy()
+
+    # Filter aggregated data
     if selected_dept == "All":
-        mask = (daily_data["date"] >= start_date) & (daily_data["date"] <= end_date)
-        filtered = daily_data[mask].copy()
+        mask_agg = (daily_data["date"] >= start_date) & (daily_data["date"] <= end_date)
+        filtered_agg = daily_data[mask_agg].copy()
     else:
-        mask = (
+        mask_agg = (
             (dept_daily_data["date"] >= start_date)
             & (dept_daily_data["date"] <= end_date)
             & (dept_daily_data["dept"] == selected_dept)
         )
-        filtered = dept_daily_data[mask].copy()
+        filtered_agg = dept_daily_data[mask_agg].copy()
 
-    # Calculate fiscal year for filtered data
-    filtered["fiscal_year"] = filtered["date"].apply(
-        lambda x: x.year if x.month >= 10 else x.year - 1
-    )
+    # Add fiscal year calculations to both datasets
+    for df in [filtered_agg, filtered_raw]:
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+            df["fiscal_year"] = df["date"].apply(
+                lambda x: x.year if x.month >= 10 else x.year - 1
+            )
+            df["fiscal_period"] = df["date"].apply(lambda x: (x.month - 10) % 12 + 1)
 
-    # Calculate fiscal period (1-12, starting from October)
-    filtered["fiscal_period"] = filtered["date"].apply(
-        lambda x: (x.month - 10) % 12 + 1
-    )
-
-    return filtered
+    return filtered_agg, filtered_raw
 
 
 # Add CSS styling
@@ -1176,13 +1493,42 @@ app.index_string = """
         <title>{%title%}</title>
         {%favicon%}
         {%css%}
+        <script>
+            window.dash_clientside = Object.assign({}, window.dash_clientside, {
+                clientside: {
+                    toggle_growth: function(options, figure) {
+                        if (!figure || !figure.data) return figure;
+                        
+                        const includeGrowth = options.includes('growth');
+                        const data = figure.data;
+                        
+                        data.forEach(trace => {
+                            if (trace.customdata) {
+                                const originalY = trace.customdata.map(d => d[0]);
+                                const growthRate = trace.customdata[0][1];  // Same for all points
+                                
+                                if (includeGrowth) {
+                                    trace.y = originalY.map((y, i) => 
+                                        y * (1 + growthRate) ** (i/30)
+                                    );
+                                } else {
+                                    trace.y = originalY;
+                                }
+                            }
+                        });
+                        
+                        return {...figure, data};
+                    }
+                }
+            });
+        </script>
         <style>
             .kpi-card {
-                background-color: #f8f9fa;
-                border-radius: 10px;
+                backgroundColor: #f8f9fa;
+                borderRadius: 10px;
                 padding: 20px;
-                text-align: center;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                textAlign: center;
+                boxShadow: 0 2px 4px rgba(0,0,0,0.1);
                 width: 250px;
             }
             .kpi-card h4 {
@@ -1192,6 +1538,22 @@ app.index_string = """
             .kpi-card h2 {
                 margin: 10px 0 0 0;
                 color: #333;
+            }
+            .metric-card {
+                backgroundColor: #f8f9fa;
+                borderRadius: 8px;
+                padding: 15px;
+                width: 30%;
+                boxShadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .metric-card h5 {
+                margin: 0 0 10px 0;
+                color: #495057;
+                fontSize: 1.1em;
+            }
+            .metric-content {
+                fontSize: 1.2em;
+                color: #212529;
             }
         </style>
     </head>
