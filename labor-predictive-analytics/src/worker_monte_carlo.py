@@ -5,30 +5,10 @@ from datetime import datetime, timedelta
 
 
 class WorkerMonteCarloPredictor:
-    def __init__(self, n_simulations: int = 1000):
+    def __init__(self, n_simulations: int = 100):
         self.n_simulations = n_simulations
 
-    def calculate_worker_stats(self, df: pd.DataFrame, worker_id: str) -> Dict:
-        """Calculate historical statistics for a worker"""
-        worker_data = df[df["userid"] == worker_id]
-
-        return {
-            "mean_hours": worker_data["total_hours_charged"].mean(),
-            "std_hours": worker_data["total_hours_charged"].std(),
-            "mean_direct": worker_data["direct_hours"].mean(),
-            "std_direct": worker_data["direct_hours"].std(),
-            "overtime_prob": len(worker_data[worker_data["overtime_hours"] > 0])
-            / len(worker_data),
-            "mean_overtime": worker_data[worker_data["overtime_hours"] > 0][
-                "overtime_hours"
-            ].mean(),
-            "std_overtime": worker_data[worker_data["overtime_hours"] > 0][
-                "overtime_hours"
-            ].std(),
-            "department": worker_data["dept"].mode()[0],
-        }
-
-    def simulate_worker_days(self, worker_stats: Dict, n_days: int = 5) -> np.ndarray:
+    def simulate_worker_days(self, worker_stats: Dict, n_days: int) -> np.ndarray:
         """Simulate work days for a single worker"""
         simulations = np.zeros((self.n_simulations, n_days))
 
@@ -54,14 +34,14 @@ class WorkerMonteCarloPredictor:
         return simulations
 
     def predict_worker_next_week(
-        self, df: pd.DataFrame, worker_id: str
+        self, df: pd.DataFrame, worker_id: str, forecast_horizon: int = 5
     ) -> Tuple[np.ndarray, Dict]:
-        """Generate predictions for next 5 work days for a worker"""
+        """Generate predictions for specified number of days for a worker"""
         # Calculate worker statistics
         worker_stats = self.calculate_worker_stats(df, worker_id)
 
         # Run simulations
-        simulations = self.simulate_worker_days(worker_stats)
+        simulations = self.simulate_worker_days(worker_stats, forecast_horizon)
 
         # Calculate summary statistics
         summary = {
@@ -73,12 +53,34 @@ class WorkerMonteCarloPredictor:
 
         return simulations, summary
 
-    def predict_all_workers(self, df: pd.DataFrame) -> Dict[str, Dict]:
+    def predict_all_workers(
+        self, df: pd.DataFrame, forecast_horizon: int = 5
+    ) -> Dict[str, Dict]:
         """Generate predictions for all workers"""
         worker_predictions = {}
 
         for worker_id in df["userid"].unique():
-            _, summary = self.predict_worker_next_week(df, worker_id)
+            _, summary = self.predict_worker_next_week(df, worker_id, forecast_horizon)
             worker_predictions[worker_id] = summary
 
         return worker_predictions
+
+    def calculate_worker_stats(self, df: pd.DataFrame, worker_id: str) -> Dict:
+        """Calculate historical statistics for a worker"""
+        worker_data = df[df["userid"] == worker_id]
+
+        return {
+            "mean_hours": worker_data["total_hours_charged"].mean(),
+            "std_hours": worker_data["total_hours_charged"].std(),
+            "mean_direct": worker_data["direct_hours"].mean(),
+            "std_direct": worker_data["direct_hours"].std(),
+            "overtime_prob": len(worker_data[worker_data["overtime_hours"] > 0])
+            / len(worker_data),
+            "mean_overtime": worker_data[worker_data["overtime_hours"] > 0][
+                "overtime_hours"
+            ].mean(),
+            "std_overtime": worker_data[worker_data["overtime_hours"] > 0][
+                "overtime_hours"
+            ].std(),
+            "department": worker_data["dept"].mode()[0],
+        }

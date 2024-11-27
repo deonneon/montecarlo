@@ -873,9 +873,13 @@ def update_fiscal_pattern_plot(start_date, end_date, selected_dept):
 
 @app.callback(
     Output("worker-predictions", "figure"),
-    [Input("worker-selector", "value"), Input("department-filter", "value")],
+    [
+        Input("worker-selector", "value"),
+        Input("department-filter", "value"),
+        Input("forecast-horizon", "value"),
+    ],  # Add this input
 )
-def update_worker_predictions(selected_worker, selected_dept):
+def update_worker_predictions(selected_worker, selected_dept, forecast_horizon):
     # Initialize predictor
     worker_predictor = WorkerMonteCarloPredictor()
 
@@ -888,9 +892,9 @@ def update_worker_predictions(selected_worker, selected_dept):
     start_date = last_date - pd.Timedelta(days=60)
     historical_data = worker_data[worker_data["date"] >= start_date]
 
-    # Get predictions for selected worker
+    # Get predictions for selected worker with specified horizon
     simulations, summary = worker_predictor.predict_worker_next_week(
-        raw_data, selected_worker
+        raw_data, selected_worker, forecast_horizon
     )
 
     # Create dates for next 5 work days
@@ -1457,6 +1461,25 @@ def update_hybrid_forecast(
     except Exception as e:
         print(f"Error in update_hybrid_forecast: {str(e)}")
         return create_empty_figure(f"Error: {str(e)}"), "", "", ""
+
+
+def create_empty_figure(error_message: str) -> go.Figure:
+    """Create an empty figure with an error message"""
+    fig = go.Figure()
+    fig.add_annotation(
+        text=error_message,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(size=14, color="red"),
+    )
+    fig.update_layout(
+        xaxis=dict(showgrid=False, showticklabels=False),
+        yaxis=dict(showgrid=False, showticklabels=False),
+    )
+    return fig
 
 
 # Helper function to filter data

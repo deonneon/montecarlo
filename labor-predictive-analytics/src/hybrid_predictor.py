@@ -25,7 +25,7 @@ class HybridLaborPredictor:
 
     def calculate_employee_growth_rate(self, df: pd.DataFrame) -> float:
         """Calculate the employee growth rate based on historical data"""
-        monthly_counts = df.groupby(pd.Grouper(key="date", freq="M"))[
+        monthly_counts = df.groupby(pd.Grouper(key="date", freq="ME"))[
             "userid"
         ].nunique()
         if len(monthly_counts) < 2:
@@ -80,7 +80,9 @@ class HybridLaborPredictor:
         )
 
         # 2. Generate worker-level forecast
-        worker_predictions = self.worker_predictor.predict_all_workers(df)
+        worker_predictions = self.worker_predictor.predict_all_workers(
+            df, forecast_horizon
+        )
 
         # Combine worker predictions
         total_mean_prediction = np.zeros(forecast_horizon)
@@ -88,16 +90,9 @@ class HybridLaborPredictor:
         total_upper_bound = np.zeros(forecast_horizon)
 
         for worker_id, prediction in worker_predictions.items():
-            forecast_days = min(len(prediction["mean_prediction"]), forecast_horizon)
-            total_mean_prediction[:forecast_days] += prediction["mean_prediction"][
-                :forecast_days
-            ]
-            total_lower_bound[:forecast_days] += prediction["lower_bound"][
-                :forecast_days
-            ]
-            total_upper_bound[:forecast_days] += prediction["upper_bound"][
-                :forecast_days
-            ]
+            total_mean_prediction += prediction["mean_prediction"]
+            total_lower_bound += prediction["lower_bound"]
+            total_upper_bound += prediction["upper_bound"]
 
         # 3. Calculate employee growth factor if requested
         growth_factor = 1.0

@@ -5,7 +5,7 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 
 class MonteCarloSimulator:
-    def __init__(self, n_simulations: int = 1000):
+    def __init__(self, n_simulations: int = 100):
         self.n_simulations = n_simulations
 
     def generate_scenarios(
