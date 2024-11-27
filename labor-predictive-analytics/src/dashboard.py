@@ -199,6 +199,29 @@ app.layout = html.Div(
                     ],
                     style={"display": "flex", "justify-content": "space-between"},
                 ),
+                # Fiscal Year Results
+                html.Div(
+                    dcc.Graph(id="fiscal-year-plot"),
+                    style={
+                        "width": "100%",
+                        "margin-top": "20px",
+                        "margin-bottom": "20px",
+                        "background-color": "#fff",
+                        "border-radius": "10px",
+                        "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                        "padding": "15px",
+                    },
+                ),
+                # Fiscal Pattern Plot
+                html.Div(
+                    dcc.Graph(id="fiscal-pattern-plot"),
+                    style={
+                        "background-color": "#fff",
+                        "border-radius": "10px",
+                        "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
+                        "padding": "15px",
+                    },
+                ),
             ],
             style={"margin": "20px", "padding": "10px"},
         ),
@@ -438,18 +461,143 @@ def update_forecast(start_date, end_date, selected_dept):
     return fig
 
 
+# Fiscal Year Plot callback
+@app.callback(
+    Output("fiscal-year-plot", "figure"),
+    [
+        Input("date-picker", "start_date"),
+        Input("date-picker", "end_date"),
+        Input("department-filter", "value"),
+    ],
+)
+def update_fiscal_year_plot(start_date, end_date, selected_dept):
+    filtered_data = filter_data(start_date, end_date, selected_dept)
+
+    fig = go.Figure()
+
+    # Plot historical data
+    fig.add_trace(
+        go.Scatter(
+            x=filtered_data["date"],
+            y=filtered_data["total_hours_charged"],
+            name="Historical Data",
+            line=dict(color="blue"),
+        )
+    )
+
+    # Add fiscal year boundaries
+    fiscal_years = filtered_data["fiscal_year"].unique()
+    for fy in fiscal_years:
+        fy_start = pd.Timestamp(f"{fy}-10-01")  # October 1st
+        if (
+            fy_start >= filtered_data["date"].min()
+            and fy_start <= filtered_data["date"].max()
+        ):
+            # Add vertical line
+            fig.add_trace(
+                go.Scatter(
+                    x=[fy_start, fy_start],
+                    y=[
+                        filtered_data["total_hours_charged"].min(),
+                        filtered_data["total_hours_charged"].max(),
+                    ],
+                    mode="lines",
+                    line=dict(color="gray", dash="dash"),
+                    name=f"FY{fy} Start",
+                    showlegend=False,
+                )
+            )
+
+            # Add annotation
+            fig.add_annotation(
+                x=fy_start,
+                y=filtered_data["total_hours_charged"].max(),
+                text=f"FY{fy}",
+                showarrow=False,
+                yshift=10,
+            )
+
+    fig.update_layout(
+        title="Labor Hours by Fiscal Year",
+        xaxis_title="Date",
+        yaxis_title="Total Hours Charged",
+        height=400,
+        template="plotly_white",
+    )
+
+    return fig
+
+
+# Fiscal Pattern Plot callback
+@app.callback(
+    Output("fiscal-pattern-plot", "figure"),
+    [
+        Input("date-picker", "start_date"),
+        Input("date-picker", "end_date"),
+        Input("department-filter", "value"),
+    ],
+)
+def update_fiscal_pattern_plot(start_date, end_date, selected_dept):
+    filtered_data = filter_data(start_date, end_date, selected_dept)
+
+    # Calculate mean and std by fiscal period
+    fiscal_pattern = (
+        filtered_data.groupby("fiscal_period")["total_hours_charged"]
+        .agg(["mean", "std"])
+        .reset_index()
+    )
+
+    fig = go.Figure()
+
+    # Add bar chart with error bars
+    fig.add_trace(
+        go.Bar(
+            x=fiscal_pattern["fiscal_period"],
+            y=fiscal_pattern["mean"],
+            error_y=dict(type="data", array=fiscal_pattern["std"], visible=True),
+            name="Average Hours",
+        )
+    )
+
+    fig.update_layout(
+        title="Average Labor Hours by Fiscal Period",
+        xaxis_title="Fiscal Period (1 = October)",
+        yaxis_title="Average Hours",
+        height=400,
+        template="plotly_white",
+        showlegend=True,
+    )
+
+    # Update x-axis to show all periods
+    fig.update_xaxes(tickmode="linear", tick0=1, dtick=1)
+
+    return fig
+
+
 # Helper function to filter data
 def filter_data(start_date, end_date, selected_dept):
     if selected_dept == "All":
         mask = (daily_data["date"] >= start_date) & (daily_data["date"] <= end_date)
-        return daily_data[mask].copy()
+        filtered = daily_data[mask].copy()
     else:
         mask = (
             (dept_daily_data["date"] >= start_date)
             & (dept_daily_data["date"] <= end_date)
             & (dept_daily_data["dept"] == selected_dept)
         )
-        return dept_daily_data[mask].copy()
+        filtered = dept_daily_data[mask].copy()
+
+    # Calculate fiscal year for filtered data
+    filtered["fiscal_year"] = filtered["date"].apply(
+        lambda x: x.year if x.month >= 10 else x.year - 1
+    )
+
+    # Calculate fiscal period (1-12, starting from October)
+    filtered["fiscal_period"] = filtered["date"].apply(
+        lambda x: (x.month - 10) % 12 + 1
+    )
+
+    return filtered
 
 
 # Add CSS styling
