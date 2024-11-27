@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-manufacturing_labor_data_df = pd.read_csv("sampledata/labor_data.csv")
+manufacturing_labor_data_df = pd.read_csv("data/generated/labor_data.csv")
 
 # Aggregate total hours per day
 daily_hours = manufacturing_labor_data_df.groupby("date")["total_hours_charged"].sum()
@@ -22,7 +22,7 @@ plt.plot(
     average_hours_per_employee.values,
     label="Average Hours per Employee",
 )
-plt.title("Average Labor Hours Charged per Employee per Day in 2023")
+plt.title("Average Labor Hours Charged per Employee per Day in 2021 to 2023")
 plt.xlabel("Date")
 plt.ylabel("Average Hours per Employee")
 plt.grid(True)

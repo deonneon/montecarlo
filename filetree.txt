@@ -1,0 +1,51 @@
+.
+├── checks
+├── create_project_structure.sh
+├── filetree.txt
+├── labor-predictive-analytics
+│   ├── README.md
+│   ├── data
+│   │   ├── generated
+│   │   │   ├── chart_average.py
+│   │   │   ├── chart_total.py
+│   │   │   ├── data_creation.py
+│   │   │   └── labor_data.csv
+│   │   ├── processed
+│   │   └── raw
+│   ├── export_proj.sh
+│   ├── labor-predictive-analytics_contents.txt
+│   ├── notebooks
+│   ├── requirements.txt
+│   ├── setup.py
+│   ├── src
+│   │   ├── __init__.py
+│   │   ├── dashboard.py
+│   │   ├── data_processing.py
+│   │   ├── kpi_calculation.py
+│   │   ├── monte_carlo.py
+│   │   └── utils.py
+│   └── tests
+│       ├── test_dashboard.py
+│       ├── test_data_processing.py
+│       ├── test_kpi_calculation.py
+│       └── test_monte_carlo.py
+├── old
+│   ├── blended
+│   │   ├── blended.py
+│   │   └── resdiualdistribution.md
+│   ├── macro
+│   │   ├── four.py
+│   │   ├── main.py
+│   │   ├── monte_dumb.py
+│   │   ├── montecarlo.md
+│   │   ├── per.py
+│   │   ├── schema.s
+│   │   ├── second.py
+│   │   ├── sub.py
+│   │   └── third.py
+│   └── ml
+│       └── ml_approach.py
+├── sampledata
+└── terminal.sh
+
+15 directories, 34 files

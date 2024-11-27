@@ -1,0 +1,12 @@
+pandas
+numpy
+statsmodels
+matplotlib
+scipy
+prophet
+scikit-learn
+plotly  # for interactive visualizations
+
+dash
+dash-core-components
+dash-html-components

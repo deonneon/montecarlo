@@ -3,13 +3,38 @@ import random
 from datetime import datetime, timedelta
 
 # Define parameters for the dataset
-start_date = datetime(2023, 1, 1)
+start_date = datetime(2021, 1, 1)
 end_date = datetime(2023, 12, 31)
 total_days = (end_date - start_date).days + 1
 num_employees_start = 50
 num_employees_end = 70
 dept_list = ["Assembly", "Quality", "Maintenance", "Logistics", "Management"]
 holidays = [
+    # Year 2021
+    datetime(2021, 1, 1),  # New Year's Day
+    datetime(2021, 1, 18),  # Martin Luther King Jr. Day
+    datetime(2021, 2, 15),  # Presidents' Day
+    datetime(2021, 5, 31),  # Memorial Day
+    datetime(2021, 6, 19),  # Juneteenth National Independence Day
+    datetime(2021, 7, 4),  # Independence Day
+    datetime(2021, 9, 6),  # Labor Day
+    datetime(2021, 10, 11),  # Columbus Day
+    datetime(2021, 11, 11),  # Veterans Day
+    datetime(2021, 11, 25),  # Thanksgiving Day
+    datetime(2021, 12, 25),  # Christmas Day
+    # Year 2022
+    datetime(2022, 1, 1),  # New Year's Day
+    datetime(2022, 1, 17),  # Martin Luther King Jr. Day
+    datetime(2022, 2, 21),  # Presidents' Day
+    datetime(2022, 5, 30),  # Memorial Day
+    datetime(2022, 6, 19),  # Juneteenth National Independence Day
+    datetime(2022, 7, 4),  # Independence Day
+    datetime(2022, 9, 5),  # Labor Day
+    datetime(2022, 10, 10),  # Columbus Day
+    datetime(2022, 11, 11),  # Veterans Day
+    datetime(2022, 11, 24),  # Thanksgiving Day
+    datetime(2022, 12, 25),  # Christmas Day
+    # Year 2023
     datetime(2023, 1, 1),  # New Year's Day
     datetime(2023, 1, 16),  # Martin Luther King Jr. Day
     datetime(2023, 2, 20),  # Presidents' Day
@@ -17,8 +42,8 @@ holidays = [
     datetime(2023, 6, 19),  # Juneteenth National Independence Day
     datetime(2023, 7, 4),  # Independence Day
     datetime(2023, 9, 4),  # Labor Day
-    datetime(2023, 10, 9),  # Columbus Day (or Indigenous Peoples' Day in some states)
-    datetime(2023, 11, 10),  # Veterans Day (observed since 11th falls on a Saturday)
+    datetime(2023, 10, 9),  # Columbus Day
+    datetime(2023, 11, 10),  # Veterans Day (observed)
     datetime(2023, 11, 23),  # Thanksgiving Day
     datetime(2023, 12, 25),  # Christmas Day
 ]
@@ -102,4 +127,6 @@ def adjust_manufacturing_seasonality(df):
 manufacturing_labor_data_df = adjust_manufacturing_seasonality(labor_data_df)
 
 # Save the DataFrame to a CSV file
-labor_data_df.to_csv("sampledata/labor_data.csv", index=False)
+labor_data_df.to_csv("labor_data.csv", index=False)
+
+print(labor_data_df["date"].dt.year.unique())
