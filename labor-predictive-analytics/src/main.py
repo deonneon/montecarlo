@@ -6,8 +6,11 @@ from kpi_calculation import KPICalculator
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 from microstrategy_export import MicroStrategyExporter
+from worker_monte_carlo import WorkerMonteCarloPredictor
+from hybrid_predictor import HybridLaborPredictor
 
 
 def export_for_microstrategy(daily_data, forecast_results):
@@ -47,10 +50,14 @@ def main():
     )
     simulator = MonteCarloSimulator(n_simulations=1000)
     kpi_calc = KPICalculator()
+    worker_predictor = WorkerMonteCarloPredictor()
+    hybrid_predictor = HybridLaborPredictor()  # Add this line
 
     # Load and prepare data
     raw_data = preprocessor.load_and_prepare_data("data/generated/labor_data.csv")
-    daily_data = preprocessor.aggregate_daily_metrics(raw_data)
+
+    # Unpack the two DataFrames returned by aggregate_daily_metrics
+    daily_data, dept_daily_data = preprocessor.aggregate_daily_metrics(raw_data)
     daily_data = preprocessor.create_manufacturing_features(daily_data)
 
     # Get fiscal year pattern
@@ -66,6 +73,16 @@ def main():
         predictor.model, daily_data, forecast_horizon, fiscal_pattern
     )
 
+    # Generate worker predictions
+    worker_predictions = worker_predictor.predict_all_workers(
+        raw_data, forecast_horizon
+    )
+
+    # Generate hybrid forecast
+    hybrid_mean, hybrid_lower, hybrid_upper = hybrid_predictor.generate_hybrid_forecast(
+        raw_data, forecast_horizon, include_seasonality=True, include_growth=True
+    )
+
     # Calculate KPIs
     labor_kpis = kpi_calc.calculate_labor_efficiency(daily_data)
 
@@ -79,8 +96,36 @@ def main():
         "lower_bound": lower_bound,
         "upper_bound": upper_bound,
         "start_date": daily_data["date"].max().strftime("%Y-%m-%d"),
+        "worker_forecasts": worker_predictions,
+        "hybrid_forecast": {
+            "mean": hybrid_mean,
+            "lower_bound": hybrid_lower,
+            "upper_bound": hybrid_upper,
+        },
     }
-    export_for_microstrategy(daily_data, forecast_results)
+
+    fiscal_data = {
+        "yearly_patterns": (
+            fiscal_pattern.to_dict() if isinstance(fiscal_pattern, pd.DataFrame) else {}
+        ),
+        "period_trends": daily_data.groupby("fiscal_period")["total_hours_charged"]
+        .mean()
+        .to_dict(),
+        "year_over_year": daily_data.groupby("fiscal_year")["total_hours_charged"]
+        .sum()
+        .to_dict(),
+    }
+
+    # Export all data to MicroStrategy
+    exporter = MicroStrategyExporter()
+    exporter.export_all_data(
+        daily_data=daily_data,
+        dept_data=dept_daily_data,
+        worker_data=raw_data,
+        forecast_results=forecast_results,
+        kpi_results=labor_kpis,
+        fiscal_data=fiscal_data,
+    )
 
     return labor_kpis
 

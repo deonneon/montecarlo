@@ -3,3 +3,4 @@ filetree.txt
 export_proj.sh
 *.pyc
 __pycache__/
+*.json
