@@ -4,10 +4,13 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import plotly.express as px
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from data_processing import DataPreprocessor
 from time_series_model import TimeSeriesPredictor
 from monte_carlo import MonteCarloSimulator
+from worker_monte_carlo import WorkerMonteCarloPredictor
+from plotly.subplots import make_subplots
 
 # Initialize the Dash app
 app = dash.Dash(
@@ -225,6 +228,37 @@ app.layout = html.Div(
             ],
             style={"margin": "20px", "padding": "10px"},
         ),
+        html.Div(
+            [
+                html.H3("Individual Worker Predictions"),
+                dcc.Dropdown(
+                    id="worker-selector",
+                    options=[
+                        {"label": worker, "value": worker}
+                        for worker in raw_data["userid"].unique()
+                    ],
+                    value=raw_data["userid"].iloc[0],
+                ),
+                dcc.Graph(id="worker-predictions"),
+            ],
+            style={"margin": "20px", "padding": "20px"},
+        ),
+        # Add this to the dashboard layout after the individual worker predictions
+        html.Div(
+            [
+                html.H3("Aggregate Workforce Predictions"),
+                dcc.Graph(id="aggregated-worker-predictions"),
+            ],
+            style={"margin": "20px", "padding": "20px"},
+        ),
+        # Add this after the other charts
+        html.Div(
+            [
+                html.H3("Average Hours per Worker"),
+                dcc.Graph(id="average-hours-predictions"),
+            ],
+            style={"margin": "20px", "padding": "20px"},
+        ),
     ],
     style={"background-color": "#f0f2f5", "min-height": "100vh", "padding": "20px"},
 )
@@ -263,7 +297,6 @@ def update_kpis(start_date, end_date, selected_dept):
     return total_hours, efficiency, overtime
 
 
-# Update labor trend callback
 @app.callback(
     Output("labor-trend", "figure"),
     [
@@ -274,17 +307,69 @@ def update_kpis(start_date, end_date, selected_dept):
 )
 def update_labor_trend(start_date, end_date, selected_dept):
     filtered_data = filter_data(start_date, end_date, selected_dept)
+    print("Available columns:", filtered_data.columns)  # Debug print
 
-    fig = go.Figure()
+    # Create subplot figure with two rows
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        subplot_titles=("Total Labor Hours", "Average Hours per Worker"),
+        vertical_spacing=0.12,
+    )
+
+    # Plot 1: Total Hours
     fig.add_trace(
         go.Scatter(
             x=filtered_data["date"],
             y=filtered_data["total_hours_charged"],
             mode="lines",
             name="Total Hours",
-        )
+            line=dict(color="#2ecc71"),
+        ),
+        row=1,
+        col=1,
     )
 
+    # Plot 2: Average Hours per Worker
+    # Calculate daily averages using employee_count instead of userid
+    daily_data = (
+        filtered_data.groupby("date")
+        .agg(
+            {
+                "total_hours_charged": "sum",
+                "employee_count": "first",  # Changed from userid to employee_count
+            }
+        )
+        .reset_index()
+    )
+
+    daily_data["avg_hours_per_worker"] = (
+        daily_data["total_hours_charged"] / daily_data["employee_count"]
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=daily_data["date"],
+            y=daily_data["avg_hours_per_worker"],
+            mode="lines",
+            name="Avg Hours per Worker",
+            line=dict(color="#3498db"),
+        ),
+        row=2,
+        col=1,
+    )
+
+    # Add 8-hour reference line to average hours plot
+    fig.add_hline(
+        y=8,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="8 Hour Standard",
+        annotation_position="right",
+        row=2,
+    )
+
+    # Update layout
     title = (
         "Labor Hours Trend - All Departments"
         if selected_dept == "All"
@@ -292,12 +377,19 @@ def update_labor_trend(start_date, end_date, selected_dept):
     )
 
     fig.update_layout(
+        height=800,  # Increased height for two plots
         title=title,
-        xaxis_title="Date",
-        yaxis_title="Hours",
-        height=400,
+        showlegend=True,
         template="plotly_white",
+        hovermode="x unified",
     )
+
+    # Update x-axis labels
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+
+    # Update y-axis labels
+    fig.update_yaxes(title_text="Total Hours", row=1, col=1)
+    fig.update_yaxes(title_text="Average Hours per Worker", row=2, col=1)
 
     return fig
 
@@ -613,6 +705,438 @@ def update_fiscal_pattern_plot(start_date, end_date, selected_dept):
 
     # Update x-axis to show all periods
     fig.update_xaxes(tickmode="linear", tick0=1, dtick=1)
+
+    return fig
+
+
+@app.callback(
+    Output("worker-predictions", "figure"),
+    [Input("worker-selector", "value"), Input("department-filter", "value")],
+)
+def update_worker_predictions(selected_worker, selected_dept):
+    # Initialize predictor
+    worker_predictor = WorkerMonteCarloPredictor()
+
+    # Get historical data for selected worker
+    worker_data = raw_data[raw_data["userid"] == selected_worker].copy()
+    worker_data["date"] = pd.to_datetime(worker_data["date"])
+
+    # Get last 60 days of data
+    last_date = worker_data["date"].max()
+    start_date = last_date - pd.Timedelta(days=60)
+    historical_data = worker_data[worker_data["date"] >= start_date]
+
+    # Get predictions for selected worker
+    simulations, summary = worker_predictor.predict_worker_next_week(
+        raw_data, selected_worker
+    )
+
+    # Create dates for next 5 work days
+    next_dates = pd.date_range(
+        start=last_date + timedelta(days=1), periods=5, freq="B"  # Business days
+    )
+
+    # Create figure
+    fig = go.Figure()
+
+    # Add historical data
+    fig.add_trace(
+        go.Scatter(
+            x=historical_data["date"],
+            y=historical_data["total_hours_charged"],
+            name="Historical Hours",
+            line=dict(color="#2ecc71"),
+        )
+    )
+
+    # Add mean prediction line
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=summary["mean_prediction"],
+            name="Mean Prediction",
+            line=dict(color="#3498db", dash="dash"),
+        )
+    )
+
+    # Add confidence interval
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=summary["upper_bound"],
+            mode="lines",
+            name="95% CI Upper",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=summary["lower_bound"],
+            mode="lines",
+            name="95% CI Lower",
+            fill="tonexty",
+            fillcolor="rgba(52, 152, 219, 0.2)",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    # Add markers for overtime days (>8 hours) in historical data
+    overtime_data = historical_data[historical_data["total_hours_charged"] > 8.0]
+    if not overtime_data.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=overtime_data["date"],
+                y=overtime_data["total_hours_charged"],
+                mode="markers",
+                name="Overtime Days (>8hrs)",
+                marker=dict(color="#e74c3c", size=8, symbol="star"),
+            )
+        )
+
+    # Calculate worker statistics for the title
+    avg_hours = historical_data["total_hours_charged"].mean()
+    overtime_days = len(overtime_data)
+    dept = summary["worker_stats"]["department"]
+
+    # Add a shape for the vertical line
+    fig.add_shape(
+        type="line",
+        x0=last_date,
+        x1=last_date,
+        y0=0,
+        y1=1,
+        yref="paper",
+        line=dict(
+            color="gray",
+            width=1,
+            dash="dash",
+        ),
+    )
+
+    # Add annotation for the vertical line
+    fig.add_annotation(
+        x=last_date,
+        y=1,
+        yref="paper",
+        text="Prediction Start",
+        showarrow=False,
+        textangle=-90,
+        xanchor="left",
+        yanchor="bottom",
+    )
+
+    fig.update_layout(
+        title=f"{selected_worker} - {dept}<br>"
+        f"Avg Hours: {avg_hours:.1f} | Days Over 8hrs: {overtime_days}",
+        xaxis_title="Date",
+        yaxis_title="Hours",
+        height=500,
+        template="plotly_white",
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    # Ensure y-axis starts at 0 and has some padding at the top
+    y_max = max(
+        historical_data["total_hours_charged"].max(), summary["upper_bound"].max()
+    )
+    fig.update_yaxes(range=[0, y_max * 1.1])
+
+    return fig
+
+
+@app.callback(
+    Output("aggregated-worker-predictions", "figure"),
+    [Input("department-filter", "value")],
+)
+def update_aggregated_predictions(selected_dept):
+    # Initialize predictor
+    worker_predictor = WorkerMonteCarloPredictor()
+
+    # Get all worker predictions
+    worker_predictions = worker_predictor.predict_all_workers(raw_data)
+
+    # Get historical data aggregated by date
+    historical_data = raw_data.copy()
+    historical_data["date"] = pd.to_datetime(historical_data["date"])
+
+    # Get last 60 days of data
+    last_date = historical_data["date"].max()
+    start_date = last_date - pd.Timedelta(days=60)
+    historical_data = historical_data[historical_data["date"] >= start_date]
+
+    # Aggregate historical data by date
+    daily_totals = (
+        historical_data.groupby("date")
+        .agg({"total_hours_charged": "sum", "userid": "nunique"})
+        .reset_index()
+    )
+
+    # Aggregate predictions for next 5 days
+    next_dates = pd.date_range(start=last_date + timedelta(days=1), periods=5, freq="B")
+
+    # Sum up predictions across all workers
+    total_mean_prediction = np.zeros(5)
+    total_lower_bound = np.zeros(5)
+    total_upper_bound = np.zeros(5)
+
+    for worker_id, prediction in worker_predictions.items():
+        total_mean_prediction += prediction["mean_prediction"]
+        total_lower_bound += prediction["lower_bound"]
+        total_upper_bound += prediction["upper_bound"]
+
+    # Create figure
+    fig = go.Figure()
+
+    # Add historical total hours
+    fig.add_trace(
+        go.Scatter(
+            x=daily_totals["date"],
+            y=daily_totals["total_hours_charged"],
+            name="Historical Total Hours",
+            line=dict(color="#2ecc71"),
+        )
+    )
+
+    # Add predicted total hours
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=total_mean_prediction,
+            name="Predicted Total Hours",
+            line=dict(color="#3498db", dash="dash"),
+        )
+    )
+
+    # Add confidence interval
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=total_upper_bound,
+            mode="lines",
+            name="95% CI Upper",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=total_lower_bound,
+            mode="lines",
+            name="95% CI Lower",
+            fill="tonexty",
+            fillcolor="rgba(52, 152, 219, 0.2)",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    # Add a shape for the vertical line
+    fig.add_shape(
+        type="line",
+        x0=last_date,
+        x1=last_date,
+        y0=0,
+        y1=1,
+        yref="paper",
+        line=dict(
+            color="gray",
+            width=1,
+            dash="dash",
+        ),
+    )
+
+    # Add annotation for the vertical line
+    fig.add_annotation(
+        x=last_date,
+        y=1,
+        yref="paper",
+        text="Prediction Start",
+        showarrow=False,
+        textangle=-90,
+        xanchor="left",
+        yanchor="bottom",
+    )
+
+    # Calculate summary statistics
+    avg_total_hours = daily_totals["total_hours_charged"].mean()
+    avg_workers = daily_totals["userid"].mean()
+
+    fig.update_layout(
+        title=f"Aggregate Workforce Hours<br>"
+        f"Avg Daily Hours: {avg_total_hours:.1f} | Avg Workers: {avg_workers:.1f}",
+        xaxis_title="Date",
+        yaxis_title="Total Hours",
+        height=500,
+        template="plotly_white",
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    return fig
+
+
+@app.callback(
+    Output("average-hours-predictions", "figure"), [Input("department-filter", "value")]
+)
+def update_average_hours_predictions(selected_dept):
+    # Initialize predictor
+    worker_predictor = WorkerMonteCarloPredictor()
+
+    # Get historical data
+    historical_data = raw_data.copy()
+    historical_data["date"] = pd.to_datetime(historical_data["date"])
+
+    # Get last 60 days of data
+    last_date = historical_data["date"].max()
+    start_date = last_date - pd.Timedelta(days=60)
+    historical_data = historical_data[historical_data["date"] >= start_date]
+
+    # Calculate daily average hours per worker
+    daily_averages = (
+        historical_data.groupby("date")
+        .agg({"total_hours_charged": "sum", "userid": "nunique"})
+        .reset_index()
+    )
+
+    daily_averages["avg_hours_per_worker"] = (
+        daily_averages["total_hours_charged"] / daily_averages["userid"]
+    )
+
+    # Get worker predictions
+    worker_predictions = worker_predictor.predict_all_workers(raw_data)
+    next_dates = pd.date_range(start=last_date + timedelta(days=1), periods=5, freq="B")
+
+    # Calculate average predicted hours per worker
+    num_workers = len(worker_predictions)
+    total_mean_prediction = np.zeros(5)
+    total_lower_bound = np.zeros(5)
+    total_upper_bound = np.zeros(5)
+
+    for worker_id, prediction in worker_predictions.items():
+        total_mean_prediction += prediction["mean_prediction"]
+        total_lower_bound += prediction["lower_bound"]
+        total_upper_bound += prediction["upper_bound"]
+
+    avg_mean_prediction = total_mean_prediction / num_workers
+    avg_lower_bound = total_lower_bound / num_workers
+    avg_upper_bound = total_upper_bound / num_workers
+
+    # Create figure
+    fig = go.Figure()
+
+    # Add historical average hours
+    fig.add_trace(
+        go.Scatter(
+            x=daily_averages["date"],
+            y=daily_averages["avg_hours_per_worker"],
+            name="Historical Average Hours",
+            line=dict(color="#2ecc71"),
+        )
+    )
+
+    # Add predicted average hours
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=avg_mean_prediction,
+            name="Predicted Average Hours",
+            line=dict(color="#3498db", dash="dash"),
+        )
+    )
+
+    # Add confidence interval
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=avg_upper_bound,
+            mode="lines",
+            name="95% CI Upper",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=next_dates,
+            y=avg_lower_bound,
+            mode="lines",
+            name="95% CI Lower",
+            fill="tonexty",
+            fillcolor="rgba(52, 152, 219, 0.2)",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    # Add reference line for 8 hours
+    fig.add_hline(
+        y=8,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="8 Hour Standard",
+        annotation_position="right",
+    )
+
+    # Add vertical line separating historical and predicted data
+    fig.add_shape(
+        type="line",
+        x0=last_date,
+        x1=last_date,
+        y0=0,
+        y1=1,
+        yref="paper",
+        line=dict(
+            color="gray",
+            width=1,
+            dash="dash",
+        ),
+    )
+
+    # Add annotation for the vertical line
+    fig.add_annotation(
+        x=last_date,
+        y=1,
+        yref="paper",
+        text="Prediction Start",
+        showarrow=False,
+        textangle=-90,
+        xanchor="left",
+        yanchor="bottom",
+    )
+
+    # Calculate summary statistics
+    overall_avg_hours = daily_averages["avg_hours_per_worker"].mean()
+    days_over_eight = len(daily_averages[daily_averages["avg_hours_per_worker"] > 8])
+
+    fig.update_layout(
+        title=f"Average Hours per Worker<br>"
+        f"Overall Avg: {overall_avg_hours:.1f} hrs | Days Over 8hrs: {days_over_eight}",
+        xaxis_title="Date",
+        yaxis_title="Average Hours per Worker",
+        height=500,
+        template="plotly_white",
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    # Set y-axis range with some padding
+    y_max = max(
+        daily_averages["avg_hours_per_worker"].max(),
+        avg_upper_bound.max(),
+        8.5,  # Ensure 8-hour line is visible
+    )
+    fig.update_yaxes(range=[0, y_max * 1.1])
 
     return fig
 
