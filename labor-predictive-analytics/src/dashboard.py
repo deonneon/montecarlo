@@ -461,7 +461,6 @@ def update_forecast(start_date, end_date, selected_dept):
     return fig
 
 
-# Fiscal Year Plot callback
 @app.callback(
     Output("fiscal-year-plot", "figure"),
     [
@@ -472,6 +471,20 @@ def update_forecast(start_date, end_date, selected_dept):
 )
 def update_fiscal_year_plot(start_date, end_date, selected_dept):
     filtered_data = filter_data(start_date, end_date, selected_dept)
+
+    # Fit time series model
+    ts_data = filtered_data["total_hours_charged"].values
+    predictor.fit_holtwinters(ts_data)
+
+    # Generate forecast for next fiscal year (approximately 252 trading days)
+    forecast_horizon = 252
+    mean_forecast, lower_bound, upper_bound = simulator.generate_scenarios(
+        predictor.model, filtered_data, forecast_horizon
+    )
+
+    # Create forecast dates
+    last_date = pd.to_datetime(filtered_data["date"].max())
+    forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[1:]
 
     fig = go.Figure()
 
@@ -485,6 +498,38 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
         )
     )
 
+    # Add forecast and confidence intervals
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=mean_forecast,
+            name="Forecast",
+            line=dict(color="#e74c3c", dash="dash"),
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=upper_bound,
+            mode="lines",
+            line=dict(width=0),
+            showlegend=False,
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=forecast_dates,
+            y=lower_bound,
+            mode="lines",
+            line=dict(width=0),
+            fillcolor="rgba(231, 76, 60, 0.2)",
+            fill="tonexty",
+            showlegend=False,
+        )
+    )
+
     # Add fiscal year boundaries
     fiscal_years = filtered_data["fiscal_year"].unique()
     for fy in fiscal_years:
@@ -493,7 +538,6 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
             fy_start >= filtered_data["date"].min()
             and fy_start <= filtered_data["date"].max()
         ):
-            # Add vertical line
             fig.add_trace(
                 go.Scatter(
                     x=[fy_start, fy_start],
@@ -508,7 +552,6 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
                 )
             )
 
-            # Add annotation
             fig.add_annotation(
                 x=fy_start,
                 y=filtered_data["total_hours_charged"].max(),
@@ -518,7 +561,7 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
             )
 
     fig.update_layout(
-        title="Labor Hours by Fiscal Year",
+        title="Labor Hours by Fiscal Year with Forecast",
         xaxis_title="Date",
         yaxis_title="Total Hours Charged",
         height=400,
