@@ -1,7 +1,6 @@
 import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
-from dash import clientside_callback, ClientsideFunction
 import plotly.graph_objs as go
 import plotly.express as px
 import pandas as pd
@@ -261,25 +260,99 @@ app.layout = html.Div(
             ],
             style={"margin": "20px", "padding": "20px"},
         ),
-        # Hybrid Forecast Section
+        # Hybrid Forecast Analysis Section
         html.Div(
             [
-                # Header for Hybrid Forecast Section
+                # Header
                 html.H3(
                     "Hybrid Labor Forecast Analysis",
                     style={"marginBottom": "20px", "textAlign": "center"},
                 ),
-                # Control Panel
+                # Controls Row
                 html.Div(
                     [
+                        # Model Weight Control
+                        html.Div(
+                            [
+                                html.Label(
+                                    "Model Weights:",
+                                    style={
+                                        "marginBottom": "10px",
+                                        "fontWeight": "bold",
+                                    },
+                                ),
+                                dcc.Slider(
+                                    id="aggregate-weight",
+                                    min=0,
+                                    max=1,
+                                    step=0.1,
+                                    value=0.6,
+                                    marks={i / 10: str(i / 10) for i in range(0, 11)},
+                                    tooltip={
+                                        "placement": "bottom",
+                                        "always_visible": True,
+                                    },
+                                ),
+                                html.Div(
+                                    "Aggregate Model Weight",
+                                    style={
+                                        "textAlign": "center",
+                                        "fontSize": "0.9em",
+                                        "color": "#666",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "width": "30%",
+                                "display": "inline-block",
+                                "marginRight": "3%",
+                            },
+                        ),
+                        # Forecast Horizon Control
+                        html.Div(
+                            [
+                                html.Label(
+                                    "Forecast Horizon (Days):",
+                                    style={
+                                        "marginBottom": "10px",
+                                        "fontWeight": "bold",
+                                    },
+                                ),
+                                dcc.Slider(
+                                    id="forecast-horizon",
+                                    min=7,
+                                    max=90,
+                                    step=7,
+                                    value=30,
+                                    marks={i: f"{i}d" for i in range(7, 91, 7)},
+                                    tooltip={
+                                        "placement": "bottom",
+                                        "always_visible": True,
+                                    },
+                                ),
+                                html.Div(
+                                    "Number of Days to Forecast",
+                                    style={
+                                        "textAlign": "center",
+                                        "fontSize": "0.9em",
+                                        "color": "#666",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "width": "30%",
+                                "display": "inline-block",
+                                "marginRight": "3%",
+                            },
+                        ),
                         # Forecast Settings
                         html.Div(
                             [
                                 html.Label(
                                     "Forecast Settings:",
                                     style={
-                                        "fontWeight": "bold",
                                         "marginBottom": "10px",
+                                        "fontWeight": "bold",
                                     },
                                 ),
                                 dcc.Checklist(
@@ -295,49 +368,14 @@ app.layout = html.Div(
                                         },
                                     ],
                                     value=["seasonality", "growth"],
-                                    style={"marginBottom": "15px"},
                                 ),
                             ],
-                            style={
-                                "width": "30%",
-                                "display": "inline-block",
-                                "marginRight": "20px",
-                            },
-                        ),
-                        # Forecast Horizon Selector
-                        html.Div(
-                            [
-                                html.Label(
-                                    "Forecast Horizon:",
-                                    style={
-                                        "fontWeight": "bold",
-                                        "marginBottom": "10px",
-                                    },
-                                ),
-                                dcc.Slider(
-                                    id="forecast-horizon",
-                                    min=7,
-                                    max=90,
-                                    step=7,
-                                    value=30,
-                                    marks={i: f"{i}d" for i in range(7, 91, 7)},
-                                    tooltip={
-                                        "placement": "bottom",
-                                        "always_visible": True,
-                                    },
-                                ),
-                            ],
-                            style={"width": "60%", "display": "inline-block"},
+                            style={"width": "30%", "display": "inline-block"},
                         ),
                     ],
-                    style={
-                        "marginBottom": "20px",
-                        "padding": "15px",
-                        "backgroundColor": "#f8f9fa",
-                        "borderRadius": "10px",
-                    },
+                    style={"marginBottom": "20px"},
                 ),
-                # Main Forecast Chart
+                # Main Chart
                 html.Div(
                     [dcc.Graph(id="hybrid-forecast-chart")],
                     style={"marginBottom": "20px"},
@@ -345,33 +383,24 @@ app.layout = html.Div(
                 # Metrics Row
                 html.Div(
                     [
-                        # Confidence Metrics Card
+                        # Confidence Metrics
                         html.Div(
                             [
                                 html.H5("Confidence Metrics"),
-                                html.Div(
-                                    id="confidence-metrics", className="metric-content"
-                                ),
+                                html.Div(id="confidence-metrics"),
                             ],
                             className="metric-card",
                         ),
-                        # Model Weights Card
+                        # Model Weights
                         html.Div(
-                            [
-                                html.H5("Model Weights"),
-                                html.Div(
-                                    id="model-weights", className="metric-content"
-                                ),
-                            ],
+                            [html.H5("Model Weights"), html.Div(id="model-weights")],
                             className="metric-card",
                         ),
-                        # Forecast Accuracy Card
+                        # Forecast Accuracy
                         html.Div(
                             [
                                 html.H5("Forecast Accuracy"),
-                                html.Div(
-                                    id="forecast-accuracy", className="metric-content"
-                                ),
+                                html.Div(id="forecast-accuracy"),
                             ],
                             className="metric-card",
                         ),
@@ -381,17 +410,6 @@ app.layout = html.Div(
                         "justifyContent": "space-between",
                         "marginBottom": "20px",
                     },
-                ),
-                # Department Breakdown
-                html.Div(
-                    [
-                        html.H4(
-                            "Department-Level Forecasts",
-                            style={"marginBottom": "15px"},
-                        ),
-                        dcc.Graph(id="dept-forecast-breakdown"),
-                    ],
-                    style={"marginBottom": "20px"},
                 ),
             ],
             style={
@@ -404,15 +422,6 @@ app.layout = html.Div(
         ),
     ],
     style={"backgroundColor": "#f0f2f5", "minHeight": "100vh", "padding": "20px"},
-)
-
-# Add this after your app layout
-app.clientside_callback(
-    ClientsideFunction(namespace="clientside", function_name="toggle_growth"),
-    Output("hybrid-forecast-chart", "figure", allow_duplicate=True),
-    Input("forecast-options", "value"),
-    State("hybrid-forecast-chart", "figure"),
-    prevent_initial_call=True,
 )
 
 
@@ -1294,84 +1303,81 @@ def update_average_hours_predictions(selected_dept):
     return fig
 
 
-# Update hybrid forecast callback
 @app.callback(
-    Output("hybrid-forecast-chart", "figure"),
+    [
+        Output("hybrid-forecast-chart", "figure"),
+        Output("confidence-metrics", "children"),
+        Output("model-weights", "children"),
+        Output("forecast-accuracy", "children"),
+    ],
     [
         Input("date-picker", "start_date"),
         Input("date-picker", "end_date"),
         Input("department-filter", "value"),
         Input("forecast-horizon", "value"),
+        Input("aggregate-weight", "value"),
         Input("forecast-options", "value"),
     ],
 )
 def update_hybrid_forecast(
-    start_date, end_date, selected_dept, forecast_horizon, forecast_options
+    start_date,
+    end_date,
+    selected_dept,
+    forecast_horizon,
+    aggregate_weight,
+    forecast_options,
 ):
-
     try:
         filtered_data, filtered_raw = filter_data(start_date, end_date, selected_dept)
 
         if filtered_raw.empty:
-            return create_empty_figure("No data available for selected filters")
+            return (
+                create_empty_figure("No data available for selected filters"),
+                "",
+                "",
+                "",
+            )
 
-        hybrid_predictor = HybridLaborPredictor()
+        # Initialize hybrid predictor with selected weight
+        hybrid_predictor = HybridLaborPredictor(aggregate_weight=aggregate_weight)
+
+        # Get forecast options
         include_seasonality = (
             "seasonality" in forecast_options if forecast_options else False
         )
-        include_growth = False
+        include_growth = "growth" in forecast_options if forecast_options else False
 
+        # Generate hybrid forecast
         mean_forecast, lower_bound, upper_bound = (
             hybrid_predictor.generate_hybrid_forecast(
                 filtered_raw,
                 forecast_horizon,
                 include_seasonality=include_seasonality,
-                include_growth=False,  # Always get base forecast
+                include_growth=include_growth,
             )
         )
 
-        # Calculate growth rate once
-        growth_rate = hybrid_predictor.calculate_employee_growth_rate(filtered_raw)
+        # Get model diagnostics
+        diagnostics = hybrid_predictor.get_model_diagnostics(filtered_raw)
 
         # Create figure
         fig = go.Figure()
 
-        last_date = pd.to_datetime(filtered_raw["date"].max())
-        forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[
-            1:
-        ]
-
-        # Structure customdata as arrays
-        historical_customdata = np.column_stack(
-            (
-                filtered_data["total_hours_charged"].values,
-                np.full(len(filtered_data), growth_rate),
-            )
-        )
-
-        forecast_customdata = np.column_stack(
-            (mean_forecast, np.full(len(mean_forecast), growth_rate))
-        )
-
-        upper_customdata = np.column_stack(
-            (upper_bound, np.full(len(upper_bound), growth_rate))
-        )
-
-        lower_customdata = np.column_stack(
-            (lower_bound, np.full(len(lower_bound), growth_rate))
-        )
-
-        # Add traces with properly structured customdata
+        # Add historical data
         fig.add_trace(
             go.Scatter(
                 x=filtered_data["date"],
                 y=filtered_data["total_hours_charged"],
                 name="Historical",
                 line=dict(color="#2ecc71"),
-                customdata=historical_customdata,
-                hovertemplate="Date: %{x}<br>Hours: %{y:.1f}<extra></extra>",
             )
         )
+
+        # Add forecast
+        last_date = pd.to_datetime(filtered_raw["date"].max())
+        forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[
+            1:
+        ]
 
         fig.add_trace(
             go.Scatter(
@@ -1379,12 +1385,10 @@ def update_hybrid_forecast(
                 y=mean_forecast,
                 name="Hybrid Forecast",
                 line=dict(color="#e74c3c", dash="dash"),
-                customdata=forecast_customdata,
-                hovertemplate="Date: %{x}<br>Forecast: %{y:.1f}<extra></extra>",
             )
         )
 
-        # Add confidence interval traces
+        # Add confidence interval
         fig.add_trace(
             go.Scatter(
                 x=forecast_dates,
@@ -1392,8 +1396,6 @@ def update_hybrid_forecast(
                 mode="lines",
                 line=dict(width=0),
                 showlegend=False,
-                customdata=upper_customdata,
-                hovertemplate="Date: %{x}<br>Upper Bound: %{y:.1f}<extra></extra>",
             )
         )
 
@@ -1404,26 +1406,16 @@ def update_hybrid_forecast(
                 mode="lines",
                 fillcolor="rgba(231, 76, 60, 0.2)",
                 fill="tonexty",
+                line=dict(width=0),
                 showlegend=False,
-                customdata=lower_customdata,
-                hovertemplate="Date: %{x}<br>Lower Bound: %{y:.1f}<extra></extra>",
             )
         )
 
-        # Add historical average reference line
-        hist_avg = filtered_data["total_hours_charged"].mean()
-        fig.add_hline(
-            y=hist_avg,
-            line_dash="dot",
-            line_color="gray",
-            annotation_text="Historical Average",
-        )
-
-        # Update the title to show actual growth state from forecast_options
+        # Update layout
         title = (
             f"Hybrid Labor Hours Forecast<br>"
             f"Seasonality: {'On' if include_seasonality else 'Off'} | "
-            f"Growth: {'On' if 'growth' in forecast_options else 'Off'}"
+            f"Growth: {'On' if include_growth else 'Off'}"
         )
 
         fig.update_layout(
@@ -1436,17 +1428,35 @@ def update_hybrid_forecast(
             showlegend=True,
         )
 
-        return fig
+        # Format metrics for display
+        confidence_metrics = html.Div(
+            [
+                html.P(
+                    f"Forecast Range: ±{(upper_bound - lower_bound).mean():.1f} hours"
+                ),
+                html.P(f"Confidence Level: 95%"),
+            ]
+        )
+
+        model_weights = html.Div(
+            [
+                html.P(f"Aggregate Model: {aggregate_weight:.1%}"),
+                html.P(f"Worker Model: {(1-aggregate_weight):.1%}"),
+            ]
+        )
+
+        forecast_accuracy = html.Div(
+            [
+                html.P(f"Aggregate RMSE: {diagnostics['aggregate_rmse']:.1f}"),
+                html.P(f"Worker RMSE: {diagnostics['worker_rmse']:.1f}"),
+            ]
+        )
+
+        return fig, confidence_metrics, model_weights, forecast_accuracy
 
     except Exception as e:
-        print(f"Error in update_hybrid_forecast: {str(e)}")  # Add debugging
-        return create_empty_figure(f"Error: {str(e)}")
-
-
-def create_empty_figure(message):
-    return go.Figure().update_layout(
-        title=message, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False)
-    )
+        print(f"Error in update_hybrid_forecast: {str(e)}")
+        return create_empty_figure(f"Error: {str(e)}"), "", "", ""
 
 
 # Helper function to filter data
@@ -1493,35 +1503,6 @@ app.index_string = """
         <title>{%title%}</title>
         {%favicon%}
         {%css%}
-        <script>
-            window.dash_clientside = Object.assign({}, window.dash_clientside, {
-                clientside: {
-                    toggle_growth: function(options, figure) {
-                        if (!figure || !figure.data) return figure;
-                        
-                        const includeGrowth = options.includes('growth');
-                        const data = figure.data;
-                        
-                        data.forEach(trace => {
-                            if (trace.customdata) {
-                                const originalY = trace.customdata.map(d => d[0]);
-                                const growthRate = trace.customdata[0][1];  // Same for all points
-                                
-                                if (includeGrowth) {
-                                    trace.y = originalY.map((y, i) => 
-                                        y * (1 + growthRate) ** (i/30)
-                                    );
-                                } else {
-                                    trace.y = originalY;
-                                }
-                            }
-                        });
-                        
-                        return {...figure, data};
-                    }
-                }
-            });
-        </script>
         <style>
             .kpi-card {
                 backgroundColor: #f8f9fa;
