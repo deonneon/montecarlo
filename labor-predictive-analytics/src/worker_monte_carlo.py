@@ -1,47 +1,68 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 from datetime import datetime, timedelta
 
 
 class WorkerMonteCarloPredictor:
-    def __init__(self, n_simulations: int = 100):
+    def __init__(self, n_simulations: int = 100, holiday_factor: float = 0.1):
         self.n_simulations = n_simulations
+        self.holiday_factor = holiday_factor
 
-    def simulate_worker_days(self, worker_stats: Dict, n_days: int) -> np.ndarray:
-        """Simulate work days for a single worker"""
+    def simulate_worker_days(
+        self,
+        worker_stats: Dict,
+        n_days: int,
+        future_holidays: Optional[List[datetime]] = None,
+    ) -> np.ndarray:
+        """Simulate work days for a single worker with holiday consideration"""
         simulations = np.zeros((self.n_simulations, n_days))
 
         for sim in range(self.n_simulations):
             for day in range(n_days):
-                # Base hours simulation
-                base_hours = np.random.normal(
-                    worker_stats["mean_hours"], worker_stats["std_hours"]
-                )
+                current_date = datetime.now() + timedelta(days=day)
 
-                # Overtime simulation
-                if np.random.random() < worker_stats["overtime_prob"]:
-                    overtime = np.random.normal(
-                        worker_stats["mean_overtime"], worker_stats["std_overtime"]
+                if future_holidays and current_date in future_holidays:
+                    # Minimal hours for holidays
+                    base_hours = np.random.normal(
+                        worker_stats["mean_hours"] * self.holiday_factor,
+                        worker_stats["std_hours"] * self.holiday_factor,
                     )
-                    overtime = max(0, overtime)  # Ensure non-negative
+                    overtime = 0  # No overtime on holidays
                 else:
-                    overtime = 0
+                    # Regular day simulation
+                    base_hours = np.random.normal(
+                        worker_stats["mean_hours"], worker_stats["std_hours"]
+                    )
 
-                total_hours = max(0, base_hours + overtime)  # Ensure non-negative
+                    # Overtime simulation
+                    if np.random.random() < worker_stats["overtime_prob"]:
+                        overtime = np.random.normal(
+                            worker_stats["mean_overtime"], worker_stats["std_overtime"]
+                        )
+                        overtime = max(0, overtime)
+                    else:
+                        overtime = 0
+
+                total_hours = max(0, base_hours + overtime)
                 simulations[sim, day] = total_hours
 
         return simulations
 
     def predict_worker_next_week(
-        self, df: pd.DataFrame, worker_id: str, forecast_horizon: int = 5
+        self,
+        df: pd.DataFrame,
+        worker_id: str,
+        forecast_horizon: int = 5,
+        future_holidays: Optional[List[datetime]] = None,
     ) -> Tuple[np.ndarray, Dict]:
-        """Generate predictions for specified number of days for a worker"""
-        # Calculate worker statistics
+        """Generate predictions considering holidays"""
         worker_stats = self.calculate_worker_stats(df, worker_id)
 
         # Run simulations
-        simulations = self.simulate_worker_days(worker_stats, forecast_horizon)
+        simulations = self.simulate_worker_days(
+            worker_stats, forecast_horizon, future_holidays
+        )
 
         # Calculate summary statistics
         summary = {
@@ -54,13 +75,18 @@ class WorkerMonteCarloPredictor:
         return simulations, summary
 
     def predict_all_workers(
-        self, df: pd.DataFrame, forecast_horizon: int = 5
+        self,
+        df: pd.DataFrame,
+        forecast_horizon: int = 5,
+        future_holidays: Optional[List[datetime]] = None,
     ) -> Dict[str, Dict]:
         """Generate predictions for all workers"""
         worker_predictions = {}
 
         for worker_id in df["userid"].unique():
-            _, summary = self.predict_worker_next_week(df, worker_id, forecast_horizon)
+            _, summary = self.predict_worker_next_week(
+                df, worker_id, forecast_horizon, future_holidays
+            )
             worker_predictions[worker_id] = summary
 
         return worker_predictions
@@ -69,18 +95,32 @@ class WorkerMonteCarloPredictor:
         """Calculate historical statistics for a worker"""
         worker_data = df[df["userid"] == worker_id]
 
+        # Separate holiday and non-holiday statistics
+        regular_days = worker_data[~worker_data["is_holiday"]]
+        holiday_days = worker_data[worker_data["is_holiday"]]
+
         return {
-            "mean_hours": worker_data["total_hours_charged"].mean(),
-            "std_hours": worker_data["total_hours_charged"].std(),
-            "mean_direct": worker_data["direct_hours"].mean(),
-            "std_direct": worker_data["direct_hours"].std(),
-            "overtime_prob": len(worker_data[worker_data["overtime_hours"] > 0])
-            / len(worker_data),
-            "mean_overtime": worker_data[worker_data["overtime_hours"] > 0][
+            "mean_hours": regular_days["total_hours_charged"].mean(),
+            "std_hours": regular_days["total_hours_charged"].std(),
+            "mean_direct": regular_days["direct_hours"].mean(),
+            "std_direct": regular_days["direct_hours"].std(),
+            "overtime_prob": len(regular_days[regular_days["overtime_hours"] > 0])
+            / len(regular_days),
+            "mean_overtime": regular_days[regular_days["overtime_hours"] > 0][
                 "overtime_hours"
             ].mean(),
-            "std_overtime": worker_data[worker_data["overtime_hours"] > 0][
+            "std_overtime": regular_days[regular_days["overtime_hours"] > 0][
                 "overtime_hours"
             ].std(),
+            "holiday_mean_hours": (
+                holiday_days["total_hours_charged"].mean()
+                if not holiday_days.empty
+                else 0
+            ),
+            "holiday_std_hours": (
+                holiday_days["total_hours_charged"].std()
+                if not holiday_days.empty
+                else 0
+            ),
             "department": worker_data["dept"].mode()[0],
         }

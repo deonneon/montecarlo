@@ -24,6 +24,24 @@ class LaborForecastBenchmark:
         self.hybrid_predictor = HybridLaborPredictor()
         self.ts_predictor = TimeSeriesPredictor()
 
+    def get_holidays_in_range(self, start_date: datetime, end_date: datetime) -> list:
+        """Get holidays within a date range"""
+        holidays = [
+            datetime(2023, 1, 1),  # New Year's Day
+            datetime(2023, 1, 16),  # Martin Luther King Jr. Day
+            datetime(2023, 2, 20),  # Presidents' Day
+            datetime(2023, 5, 29),  # Memorial Day
+            datetime(2023, 6, 19),  # Juneteenth
+            datetime(2023, 7, 4),  # Independence Day
+            datetime(2023, 9, 4),  # Labor Day
+            datetime(2023, 10, 9),  # Columbus Day
+            datetime(2023, 11, 10),  # Veterans Day (observed)
+            datetime(2023, 11, 23),  # Thanksgiving Day
+            datetime(2023, 12, 25),  # Christmas Day
+        ]
+
+        return [h for h in holidays if start_date <= h <= end_date]
+
     def load_and_split_data(self, data_path: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Load and split data into training and testing sets"""
         df = self.preprocessor.load_and_prepare_data(data_path)
@@ -36,11 +54,54 @@ class LaborForecastBenchmark:
         return train_data, test_data
 
     def calculate_metrics(self, actual: np.ndarray, predicted: np.ndarray) -> Dict:
-        """Calculate error metrics with handling for zero values"""
+        """Calculate error metrics with holiday-aware considerations"""
         # Ensure arrays are the same length
         min_length = min(len(actual), len(predicted))
         actual = actual[:min_length]
         predicted = predicted[:min_length]
+
+        # Get holidays in the test period
+        holidays = self.get_holidays_in_range(self.test_start, self.test_end)
+        test_dates = pd.date_range(self.test_start, periods=min_length)
+
+        # Separate holiday and non-holiday metrics
+        holiday_mask = [date in holidays for date in test_dates]
+        regular_mask = [not h for h in holiday_mask]
+
+        metrics = {}
+
+        # Calculate metrics for all days
+        metrics.update(self._calculate_period_metrics(actual, predicted, "all"))
+
+        # Calculate metrics for regular days
+        if any(regular_mask):
+            metrics.update(
+                self._calculate_period_metrics(
+                    actual[regular_mask], predicted[regular_mask], "regular"
+                )
+            )
+
+        # Calculate metrics for holidays
+        if any(holiday_mask):
+            metrics.update(
+                self._calculate_period_metrics(
+                    actual[holiday_mask], predicted[holiday_mask], "holiday"
+                )
+            )
+
+        return metrics
+
+    def _calculate_period_metrics(
+        self, actual: np.ndarray, predicted: np.ndarray, period_type: str
+    ) -> Dict:
+        """Calculate metrics for a specific period type"""
+        # For holidays, we expect reduced but non-zero values
+        if period_type == "holiday":
+            # If all actual values are 0, this might be a data issue
+            if np.all(actual == 0):
+                print(
+                    f"Warning: All actual values for {period_type} are 0. This might indicate a data preprocessing issue."
+                )
 
         # Calculate MAPE excluding zero values
         non_zero_mask = actual != 0
@@ -55,45 +116,60 @@ class LaborForecastBenchmark:
                 * 100
             )
         else:
-            mape = np.nan
+            # For holidays, use a different metric when actual is 0
+            if period_type == "holiday":
+                mape = (
+                    np.mean(np.abs(predicted))
+                    / (np.mean(actual[~non_zero_mask]) + 1)
+                    * 100
+                )
+            else:
+                mape = np.nan
 
-        # Calculate RMSE
+        # Calculate other metrics
         rmse = np.sqrt(np.mean((actual - predicted) ** 2))
-
-        # Calculate MAE
         mae = np.mean(np.abs(actual - predicted))
-
-        # Calculate additional metrics
         mean_actual = np.mean(actual)
         mean_predicted = np.mean(predicted)
         std_actual = np.std(actual)
         std_predicted = np.std(predicted)
 
+        # Calculate scale error with better holiday handling
+        if period_type == "holiday":
+            if mean_actual == 0:
+                # For holidays, compare to typical non-holiday values
+                scale_error = (mean_predicted / (np.mean(predicted) + 1)) * 100
+            else:
+                scale_error = (mean_predicted - mean_actual) / (mean_actual + 1) * 100
+        else:
+            if mean_actual != 0:
+                scale_error = (mean_predicted - mean_actual) / mean_actual * 100
+            else:
+                scale_error = np.nan
+
         return {
-            "MAPE": mape,
-            "RMSE": rmse,
-            "MAE": mae,
-            "Mean_Actual": mean_actual,
-            "Mean_Predicted": mean_predicted,
-            "Std_Actual": std_actual,
-            "Std_Predicted": std_predicted,
-            "Scale_Error": (mean_predicted - mean_actual)
-            / mean_actual
-            * 100,  # Percentage error in scale
+            f"{period_type}_MAPE": mape,
+            f"{period_type}_RMSE": rmse,
+            f"{period_type}_MAE": mae,
+            f"{period_type}_Mean_Actual": mean_actual,
+            f"{period_type}_Mean_Predicted": mean_predicted,
+            f"{period_type}_Std_Actual": std_actual,
+            f"{period_type}_Std_Predicted": std_predicted,
+            f"{period_type}_Scale_Error": scale_error,
+            f"{period_type}_Sample_Size": len(actual),
         }
 
     def run_benchmark(self, data_path: str) -> Dict:
-        """Run complete benchmark analysis"""
+        """Run complete benchmark analysis with holiday awareness"""
         # Load and split data
         train_data, test_data = self.load_and_split_data(data_path)
 
         # Calculate number of days in test period
         forecast_horizon = (self.test_end - self.test_start).days + 1
 
-        # Debug print
-        print(f"\nForecast horizon: {forecast_horizon}")
-        print(f"Training data shape: {train_data.shape}")
-        print(f"Test data shape: {test_data.shape}")
+        # Get holidays for the test period
+        # Use is_holiday flag from the data instead of generating holiday list
+        test_holidays = test_data[test_data["is_holiday"]]["date"].tolist()
 
         # Prepare training data for time series model
         daily_train = (
@@ -105,17 +181,14 @@ class LaborForecastBenchmark:
         self.ts_predictor.fit_holtwinters(train_ts_data)
 
         # Generate predictions using different methods
-        # 1. Aggregate Monte Carlo
+        # 1. Aggregate Monte Carlo with holidays
         agg_mean, agg_lower, agg_upper = self.simulator.generate_scenarios(
-            self.ts_predictor.model, daily_train, forecast_horizon
+            self.ts_predictor.model, daily_train, forecast_horizon, test_holidays
         )
 
-        # Debug print
-        print(f"Aggregate predictions shape: {agg_mean.shape}")
-
-        # 2. Worker-level predictions
+        # 2. Worker-level predictions with holidays
         worker_predictions = self.worker_predictor.predict_all_workers(
-            train_data, forecast_horizon
+            train_data, forecast_horizon, test_holidays
         )
 
         # Combine worker predictions
@@ -123,31 +196,19 @@ class LaborForecastBenchmark:
         for worker_id, prediction in worker_predictions.items():
             worker_mean += prediction["mean_prediction"]
 
-        # Debug print
-        print(f"Worker predictions shape: {worker_mean.shape}")
-
         # 3. Hybrid predictions
         hybrid_mean, hybrid_lower, hybrid_upper = (
-            self.hybrid_predictor.generate_hybrid_forecast(train_data, forecast_horizon)
+            self.hybrid_predictor.generate_hybrid_forecast(
+                train_data,
+                forecast_horizon,
+                include_seasonality=True,
+                include_growth=True,
+            )
         )
-
-        # Debug print
-        print(f"Hybrid predictions shape: {hybrid_mean.shape}")
 
         # Calculate actual values (daily totals)
-
         actual_daily = test_data.groupby("date")["total_hours_charged"].sum()
         actual_values = actual_daily.values
-
-        # Print some basic statistics about the data
-        print("\nData Statistics:")
-        print(
-            f"Training data daily totals - Mean: {train_data.groupby('date')['total_hours_charged'].sum().mean():.2f}"
-        )
-        print(f"Test data daily totals - Mean: {actual_daily.mean():.2f}")
-        print(f"Number of zero values in test data: {np.sum(actual_values == 0)}")
-        print(f"Min value in test data: {np.min(actual_values):.2f}")
-        print(f"Max value in test data: {np.max(actual_values):.2f}")
 
         # Calculate metrics for each method
         results = {
@@ -160,7 +221,6 @@ class LaborForecastBenchmark:
 
 
 def main():
-    # Example usage
     benchmark = LaborForecastBenchmark(
         train_start="2021-01-01",
         train_end="2022-12-31",
@@ -170,28 +230,36 @@ def main():
 
     results = benchmark.run_benchmark("data/generated/labor_data.csv")
 
-    # Print results
+    # Print results with holiday-specific metrics
     print("\nBenchmark Results:")
     print("-----------------")
+    period_types = ["all", "regular", "holiday"]
     metrics_order = [
+        "Sample_Size",
+        "MAPE",
+        "RMSE",
+        "MAE",
         "Mean_Actual",
         "Mean_Predicted",
         "Std_Actual",
         "Std_Predicted",
-        "MAPE",
-        "RMSE",
-        "MAE",
         "Scale_Error",
     ]
 
     for method, metrics in results.items():
         print(f"\n{method} Model:")
-        for metric_name in metrics_order:
-            value = metrics[metric_name]
-            if metric_name.startswith(("MAPE", "Scale_Error")):
-                print(f"{metric_name}: {value:.2f}%")
-            else:
-                print(f"{metric_name}: {value:.2f}")
+        for period in period_types:
+            print(f"\n{period.capitalize()} Days:")
+            for metric_name in metrics_order:
+                key = f"{period}_{metric_name}"
+                if key in metrics:
+                    value = metrics[key]
+                    if metric_name in ["MAPE", "Scale_Error"]:
+                        print(f"  {metric_name}: {value:.2f}%")
+                    elif metric_name == "Sample_Size":
+                        print(f"  Number of days: {int(value)}")
+                    else:
+                        print(f"  {metric_name}: {value:.2f}")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,6 @@
-# src/hybrid_predictor.py
-
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List, Optional
 from datetime import datetime, timedelta
 from monte_carlo import MonteCarloSimulator
 from worker_monte_carlo import WorkerMonteCarloPredictor
@@ -11,35 +9,39 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 class HybridLaborPredictor:
     def __init__(self, aggregate_weight: float = 0.6):
-        """
-        Initialize the hybrid predictor with weights for each model
-
-        Args:
-            aggregate_weight: Weight given to aggregate Monte Carlo predictions (0-1)
-                            Remaining weight (1-aggregate_weight) goes to worker-level predictions
-        """
         self.aggregate_weight = aggregate_weight
         self.worker_weight = 1 - aggregate_weight
         self.aggregate_simulator = MonteCarloSimulator()
         self.worker_predictor = WorkerMonteCarloPredictor()
 
-    def calculate_employee_growth_rate(self, df: pd.DataFrame) -> float:
-        """Calculate the employee growth rate based on historical data"""
-        monthly_counts = df.groupby(pd.Grouper(key="date", freq="ME"))[
-            "userid"
-        ].nunique()
-        if len(monthly_counts) < 2:
-            return 0.0
+    def get_future_holidays(self, start_date: datetime, horizon: int) -> List[datetime]:
+        """Generate list of future holidays"""
+        # This is a simplified example - you should implement your own holiday calendar
+        holidays = []
+        current_date = start_date
 
-        initial_count = monthly_counts.iloc[0]
-        final_count = monthly_counts.iloc[-1]
-        num_months = len(monthly_counts) - 1
+        # Example federal holidays (simplified)
+        federal_holidays = [
+            "2024-01-01",  # New Year's Day
+            "2024-01-15",  # Martin Luther King Jr. Day
+            "2024-02-19",  # Presidents' Day
+            "2024-05-27",  # Memorial Day
+            "2024-06-19",  # Juneteenth
+            "2024-07-04",  # Independence Day
+            "2024-09-02",  # Labor Day
+            "2024-10-14",  # Columbus Day
+            "2024-11-11",  # Veterans Day
+            "2024-11-28",  # Thanksgiving Day
+            "2024-12-25",  # Christmas Day
+        ]
 
-        if initial_count == 0 or num_months == 0:
-            return 0.0
+        for i in range(horizon):
+            check_date = current_date + timedelta(days=i)
+            date_str = check_date.strftime("%Y-%m-%d")
+            if date_str in federal_holidays:
+                holidays.append(check_date)
 
-        monthly_growth_rate = (final_count / initial_count) ** (1 / num_months) - 1
-        return monthly_growth_rate
+        return holidays
 
     def generate_hybrid_forecast(
         self,
@@ -48,25 +50,16 @@ class HybridLaborPredictor:
         include_seasonality: bool = True,
         include_growth: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Generate a hybrid forecast combining aggregate and worker-level predictions
+        """Generate a hybrid forecast with holiday considerations"""
+        # Get future holidays
+        start_date = pd.to_datetime(df["date"].max()) + timedelta(days=1)
+        future_holidays = self.get_future_holidays(start_date, forecast_horizon)
 
-        Args:
-            df: Input DataFrame with labor data
-            forecast_horizon: Number of days to forecast
-            include_seasonality: Whether to include seasonal adjustments
-            include_growth: Whether to include employee growth projections
-
-        Returns:
-            Tuple of (mean_forecast, lower_bound, upper_bound)
-        """
-        # 1. Generate aggregate-level forecast
+        # Generate aggregate-level forecast
         ts_data = df.groupby("date")["total_hours_charged"].sum().values
 
-        # Fit Holt-Winters model with appropriate seasonality
-        seasonal_period = (
-            252 if include_seasonality else None
-        )  # 252 working days per year
+        # Fit Holt-Winters model
+        seasonal_period = 252 if include_seasonality else None
         model = ExponentialSmoothing(
             ts_data,
             seasonal_periods=seasonal_period,
@@ -75,13 +68,14 @@ class HybridLaborPredictor:
             damped_trend=True,
         ).fit(optimized=True)
 
+        # Generate forecasts with holiday adjustments
         agg_mean, agg_lower, agg_upper = self.aggregate_simulator.generate_scenarios(
-            model, df, forecast_horizon
+            model, df, forecast_horizon, future_holidays
         )
 
-        # 2. Generate worker-level forecast
+        # Generate worker-level forecast
         worker_predictions = self.worker_predictor.predict_all_workers(
-            df, forecast_horizon
+            df, forecast_horizon, future_holidays
         )
 
         # Combine worker predictions
@@ -94,7 +88,7 @@ class HybridLaborPredictor:
             total_lower_bound += prediction["lower_bound"]
             total_upper_bound += prediction["upper_bound"]
 
-        # 3. Calculate employee growth factor if requested
+        # Apply growth factor if requested
         growth_factor = 1.0
         if include_growth:
             monthly_growth_rate = self.calculate_employee_growth_rate(df)
@@ -102,7 +96,7 @@ class HybridLaborPredictor:
                 [(1 + monthly_growth_rate) ** (i / 30) for i in range(forecast_horizon)]
             )
 
-        # 4. Apply weights and combine predictions
+        # Combine predictions with weights
         hybrid_mean = (
             self.aggregate_weight * agg_mean
             + self.worker_weight * total_mean_prediction
@@ -115,6 +109,16 @@ class HybridLaborPredictor:
         hybrid_upper = (
             self.aggregate_weight * agg_upper + self.worker_weight * total_upper_bound
         ) * growth_factor
+
+        # Final holiday adjustments for combined forecast
+        for i, date in enumerate(
+            pd.date_range(start=start_date, periods=forecast_horizon)
+        ):
+            if date in future_holidays:
+                holiday_factor = 0.1  # Reduced hours on holidays
+                hybrid_mean[i] *= holiday_factor
+                hybrid_lower[i] *= holiday_factor
+                hybrid_upper[i] *= holiday_factor
 
         return hybrid_mean, hybrid_lower, hybrid_upper
 
@@ -159,3 +163,27 @@ class HybridLaborPredictor:
             residuals = worker_data["total_hours_charged"] - worker_stats["mean_hours"]
             all_residuals.extend(residuals)
         return np.array(all_residuals)
+
+    def calculate_employee_growth_rate(self, df: pd.DataFrame) -> float:
+        """Calculate the employee growth rate based on historical data"""
+        # Ensure date column is datetime
+        df["date"] = pd.to_datetime(df["date"])
+
+        # Calculate monthly unique employee counts
+        monthly_counts = df.groupby(pd.Grouper(key="date", freq="ME"))[
+            "userid"
+        ].nunique()
+
+        if len(monthly_counts) < 2:
+            return 0.0
+
+        initial_count = monthly_counts.iloc[0]
+        final_count = monthly_counts.iloc[-1]
+        num_months = len(monthly_counts) - 1
+
+        if initial_count == 0 or num_months == 0:
+            return 0.0
+
+        # Calculate monthly growth rate
+        monthly_growth_rate = (final_count / initial_count) ** (1 / num_months) - 1
+        return monthly_growth_rate
