@@ -2,14 +2,40 @@ import pandas as pd
 import random
 from datetime import datetime, timedelta
 
-# Define parameters for the dataset
-start_date = datetime(2021, 1, 1)
+# Update the date range to cover 5 years
+start_date = datetime(2019, 1, 1)
 end_date = datetime(2023, 12, 31)
 total_days = (end_date - start_date).days + 1
+
+# Rest of the parameters remain the same
 num_employees_start = 50
 num_employees_end = 70
 dept_list = ["Assembly", "Quality", "Maintenance", "Logistics", "Management"]
+
+# Extended holidays list to include 2019-2023
 holidays = [
+    # Year 2019
+    datetime(2019, 1, 1),  # New Year's Day
+    datetime(2019, 1, 21),  # Martin Luther King Jr. Day
+    datetime(2019, 2, 18),  # Presidents' Day
+    datetime(2019, 5, 27),  # Memorial Day
+    datetime(2019, 7, 4),  # Independence Day
+    datetime(2019, 9, 2),  # Labor Day
+    datetime(2019, 10, 14),  # Columbus Day
+    datetime(2019, 11, 11),  # Veterans Day
+    datetime(2019, 11, 28),  # Thanksgiving Day
+    datetime(2019, 12, 25),  # Christmas Day
+    # Year 2020
+    datetime(2020, 1, 1),  # New Year's Day
+    datetime(2020, 1, 20),  # Martin Luther King Jr. Day
+    datetime(2020, 2, 17),  # Presidents' Day
+    datetime(2020, 5, 25),  # Memorial Day
+    datetime(2020, 7, 4),  # Independence Day
+    datetime(2020, 9, 7),  # Labor Day
+    datetime(2020, 10, 12),  # Columbus Day
+    datetime(2020, 11, 11),  # Veterans Day
+    datetime(2020, 11, 26),  # Thanksgiving Day
+    datetime(2020, 12, 25),  # Christmas Day
     # Year 2021
     datetime(2021, 1, 1),  # New Year's Day
     datetime(2021, 1, 18),  # Martin Luther King Jr. Day
@@ -48,11 +74,7 @@ holidays = [
     datetime(2023, 12, 25),  # Christmas Day
 ]
 
-# Generate employee IDs
-employees = [f"EMP{str(i).zfill(3)}" for i in range(1, num_employees_end + 1)]
 
-
-# Helper function to generate labor hours for a single day
 def generate_daily_labor(userid, date, dept):
     is_holiday = date in holidays
     base_hours = 0 if is_holiday else random.uniform(6, 8)
@@ -73,27 +95,39 @@ def generate_daily_labor(userid, date, dept):
     }
 
 
-# Create a growing employee base
+# Initialize the active employees list with starting count AND their departments
+active_employees = []
+for i in range(1, num_employees_start + 1):
+    userid = f"EMP{str(i).zfill(3)}"
+    dept = random.choice(dept_list)
+    active_employees.append((userid, dept))  # Tuple of (userid, department)
+
+# Create data with growing employee base
 daily_data = []
 for day in range(total_days):
     current_date = start_date + timedelta(days=day)
     current_employee_count = num_employees_start + int(
         (num_employees_end - num_employees_start) * (day / total_days)
     )
-    sampled_employees = random.sample(employees, current_employee_count)
-    for userid in sampled_employees:
+
+    # Add new employees if needed
+    while len(active_employees) < current_employee_count:
+        new_emp_num = len(active_employees) + 1
+        userid = f"EMP{str(new_emp_num).zfill(3)}"
         dept = random.choice(dept_list)
+        active_employees.append((userid, dept))
+
+    # Use all active employees for that day
+    for userid, dept in active_employees:  # Now using the fixed department
         daily_data.append(generate_daily_labor(userid, current_date, dept))
 
 # Convert the data into a DataFrame
 labor_data_df = pd.DataFrame(daily_data)
 
 
-# Adjusting seasonal trends to match manufacturing preferences
 def adjust_manufacturing_seasonality(df):
     df["month"] = df["date"].dt.month
 
-    # Updated seasonal adjustment factors
     manufacturing_seasonal_factors = {
         1: 0.92,
         2: 0.96,
@@ -109,7 +143,6 @@ def adjust_manufacturing_seasonality(df):
         12: 0.85,
     }
 
-    # Apply manufacturing-specific seasonal adjustments
     df["seasonal_factor"] = df["month"].map(manufacturing_seasonal_factors)
     df["total_hours_charged"] = round(
         df["total_hours_charged"] * df["seasonal_factor"], 2
@@ -118,7 +151,6 @@ def adjust_manufacturing_seasonality(df):
     df["non_direct_hours"] = round(df["non_direct_hours"] * df["seasonal_factor"], 2)
     df["overtime_hours"] = round(df["overtime_hours"] * df["seasonal_factor"], 2)
 
-    # Clean up the temporary columns
     df.drop(columns=["month", "seasonal_factor"], inplace=True)
     return df
 
@@ -127,6 +159,15 @@ def adjust_manufacturing_seasonality(df):
 manufacturing_labor_data_df = adjust_manufacturing_seasonality(labor_data_df)
 
 # Save the DataFrame to a CSV file
-labor_data_df.to_csv("labor_data.csv", index=False)
+manufacturing_labor_data_df.to_csv("labor_data.csv", index=False)
 
-print(labor_data_df["date"].dt.year.unique())
+# Print unique years to verify the date range
+print(manufacturing_labor_data_df["date"].dt.year.unique())
+
+# Print employee count verification
+print("\nEmployee count verification:")
+for year in range(2019, 2024):
+    year_data = manufacturing_labor_data_df[
+        manufacturing_labor_data_df["date"].dt.year == year
+    ]
+    print(f"Year {year}: {year_data['userid'].nunique()} unique employees")

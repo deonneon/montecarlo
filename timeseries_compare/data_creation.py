@@ -12,7 +12,7 @@ num_employees_start = 50
 num_employees_end = 70
 dept_list = ["Assembly", "Quality", "Maintenance", "Logistics", "Management"]
 
-# Extended holidays list to include 2019 and 2020
+# Extended holidays list to include 2019-2023
 holidays = [
     # Year 2019
     datetime(2019, 1, 1),  # New Year's Day
@@ -74,11 +74,7 @@ holidays = [
     datetime(2023, 12, 25),  # Christmas Day
 ]
 
-# The rest of the code remains the same
-employees = [f"EMP{str(i).zfill(3)}" for i in range(1, num_employees_end + 1)]
 
-
-# Helper functions remain unchanged
 def generate_daily_labor(userid, date, dept):
     is_holiday = date in holidays
     base_hours = 0 if is_holiday else random.uniform(6, 8)
@@ -99,16 +95,30 @@ def generate_daily_labor(userid, date, dept):
     }
 
 
-# Create a growing employee base
+# Initialize the active employees list with starting count AND their departments
+active_employees = []
+for i in range(1, num_employees_start + 1):
+    userid = f"EMP{str(i).zfill(3)}"
+    dept = random.choice(dept_list)
+    active_employees.append((userid, dept))  # Tuple of (userid, department)
+
+# Create data with growing employee base
 daily_data = []
 for day in range(total_days):
     current_date = start_date + timedelta(days=day)
     current_employee_count = num_employees_start + int(
         (num_employees_end - num_employees_start) * (day / total_days)
     )
-    sampled_employees = random.sample(employees, current_employee_count)
-    for userid in sampled_employees:
+
+    # Add new employees if needed
+    while len(active_employees) < current_employee_count:
+        new_emp_num = len(active_employees) + 1
+        userid = f"EMP{str(new_emp_num).zfill(3)}"
         dept = random.choice(dept_list)
+        active_employees.append((userid, dept))
+
+    # Use all active employees for that day
+    for userid, dept in active_employees:  # Now using the fixed department
         daily_data.append(generate_daily_labor(userid, current_date, dept))
 
 # Convert the data into a DataFrame
@@ -149,6 +159,15 @@ def adjust_manufacturing_seasonality(df):
 manufacturing_labor_data_df = adjust_manufacturing_seasonality(labor_data_df)
 
 # Save the DataFrame to a CSV file
-labor_data_df.to_csv("labor_data.csv", index=False)
+manufacturing_labor_data_df.to_csv("labor_data.csv", index=False)
 
-print(labor_data_df["date"].dt.year.unique())
+# Print unique years to verify the date range
+print(manufacturing_labor_data_df["date"].dt.year.unique())
+
+# Print employee count verification
+print("\nEmployee count verification:")
+for year in range(2019, 2024):
+    year_data = manufacturing_labor_data_df[
+        manufacturing_labor_data_df["date"].dt.year == year
+    ]
+    print(f"Year {year}: {year_data['userid'].nunique()} unique employees")
