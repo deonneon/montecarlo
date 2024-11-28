@@ -1,2 +1,8 @@
 *.csv
 *.json
+
+labor-predictive-analytics_contents.txt
+filetree.txt
+export_proj.sh
+*.pyc
+__pycache__/
