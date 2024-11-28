@@ -1,12 +1,10 @@
-# src/hybrid_predictor.py
-
 import numpy as np
 import pandas as pd
 from typing import Tuple, Dict, List, Optional
 from datetime import datetime, timedelta
 from monte_carlo import MonteCarloSimulator
 from worker_monte_carlo import WorkerMonteCarloPredictor
-from prophet import Prophet
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 
 class HybridLaborPredictor:
@@ -58,35 +56,22 @@ class HybridLaborPredictor:
         future_holidays = self.get_future_holidays(start_date, forecast_horizon)
 
         # Generate aggregate-level forecast
-        # Prepare data for Prophet
-        prophet_data = pd.DataFrame(
-            {
-                "ds": df.groupby("date")["date"].first(),
-                "y": df.groupby("date")["total_hours_charged"].sum(),
-            }
-        ).reset_index(drop=True)
+        ts_data = df.groupby("date")["total_hours_charged"].sum().values
 
-        # Initialize and fit Prophet model
-        model = Prophet(
-            yearly_seasonality=include_seasonality,
-            weekly_seasonality=include_seasonality,
-            daily_seasonality=False,
-            growth="linear" if include_growth else "flat",
+        # Fit Holt-Winters model
+        seasonal_period = 252 if include_seasonality else None
+        model = ExponentialSmoothing(
+            ts_data,
+            seasonal_periods=seasonal_period,
+            trend="add",
+            seasonal="add" if include_seasonality else None,
+            damped_trend=True,
+        ).fit(optimized=True)
+
+        # Generate forecasts with holiday adjustments
+        agg_mean, agg_lower, agg_upper = self.aggregate_simulator.generate_scenarios(
+            model, df, forecast_horizon, future_holidays
         )
-
-        if include_seasonality:
-            model.add_country_holidays(country_name="US")
-
-        model.fit(prophet_data)
-
-        # Generate forecasts
-        future = model.make_future_dataframe(periods=forecast_horizon)
-        forecast = model.predict(future)
-
-        # Extract the forecast components
-        agg_mean = forecast.tail(forecast_horizon)["yhat"].values
-        agg_lower = forecast.tail(forecast_horizon)["yhat_lower"].values
-        agg_upper = forecast.tail(forecast_horizon)["yhat_upper"].values
 
         # Generate worker-level forecast
         worker_predictions = self.worker_predictor.predict_all_workers(
@@ -138,22 +123,14 @@ class HybridLaborPredictor:
         return hybrid_mean, hybrid_lower, hybrid_upper
 
     def get_model_diagnostics(self, df: pd.DataFrame) -> Dict:
-        """Calculate diagnostic metrics for the hybrid model"""
-        # Prepare data for Prophet
-        prophet_data = pd.DataFrame(
-            {
-                "ds": df.groupby("date")["date"].first(),
-                "y": df.groupby("date")["total_hours_charged"].sum(),
-            }
-        ).reset_index(drop=True)
+        """
+        Calculate diagnostic metrics for the hybrid model
 
-        # Fit Prophet model
-        model = Prophet()
-        model.fit(prophet_data)
-
-        # Get predictions for historical period
-        historical_forecast = model.predict(prophet_data)
-        agg_residuals = prophet_data["y"].values - historical_forecast["yhat"].values
+        Returns:
+            Dictionary containing various model metrics
+        """
+        # Calculate aggregate model metrics
+        agg_residuals = self.calculate_aggregate_residuals(df)
 
         # Calculate worker model metrics
         worker_residuals = self.calculate_worker_residuals(df)
@@ -164,6 +141,18 @@ class HybridLaborPredictor:
             "aggregate_weight": self.aggregate_weight,
             "worker_weight": self.worker_weight,
         }
+
+    def calculate_aggregate_residuals(self, df: pd.DataFrame) -> np.ndarray:
+        """Calculate residuals for the aggregate model"""
+        daily_totals = df.groupby("date")["total_hours_charged"].sum()
+        model = ExponentialSmoothing(
+            daily_totals.values,
+            seasonal_periods=252,
+            trend="add",
+            seasonal="add",
+            damped_trend=True,
+        ).fit(optimized=True)
+        return model.resid
 
     def calculate_worker_residuals(self, df: pd.DataFrame) -> np.ndarray:
         """Calculate residuals for the worker-level model"""

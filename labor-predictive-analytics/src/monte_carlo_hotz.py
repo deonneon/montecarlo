@@ -23,29 +23,20 @@ class MonteCarloSimulator:
         confidence_level: float = 0.95,
     ) -> Tuple[np.array, np.array, np.array]:
         """
-        Generate Monte Carlo scenarios using Prophet predictions with holiday adjustments
+        Generate Monte Carlo scenarios using Holt-Winters predictions with holiday adjustments
         """
         scenarios = np.zeros((self.n_simulations, forecast_horizon))
+        residuals = model.resid
 
-        # Prepare data for Prophet
-        prophet_data = pd.DataFrame(
-            {"ds": historical_data["date"], "y": historical_data["total_hours_charged"]}
-        )
-
-        # Get Prophet forecast
-        forecast = model.predict(model.make_future_dataframe(periods=forecast_horizon))
-        forecast_dates = forecast.tail(forecast_horizon)["ds"]
-
-        # Calculate residuals from historical predictions
-        historical_forecast = model.predict(prophet_data)
-        residuals = (
-            historical_data["total_hours_charged"].values
-            - historical_forecast["yhat"].values
-        )
+        # Generate forecast dates
+        last_date = pd.to_datetime(historical_data["date"].max())
+        forecast_dates = [
+            last_date + timedelta(days=x + 1) for x in range(forecast_horizon)
+        ]
 
         for i in range(self.n_simulations):
-            # Get base forecast
-            base_forecast = forecast.tail(forecast_horizon)["yhat"].values
+            # Generate base forecast
+            forecast = model.forecast(forecast_horizon)
 
             # Generate random residuals
             random_residuals = np.random.choice(
@@ -53,12 +44,13 @@ class MonteCarloSimulator:
             )
 
             # Adjust forecasted values
-            adjusted_forecast = base_forecast + random_residuals
+            adjusted_forecast = forecast + random_residuals
 
-            # Apply holiday adjustments
+            # Apply holiday adjustments if holidays list is provided
             if holidays_list is not None:
                 for j, date in enumerate(forecast_dates):
                     if self.is_holiday(date, holidays_list):
+                        # Reduce hours for holidays
                         adjusted_forecast[j] *= self.holiday_factor
 
             # Ensure non-negative forecasts

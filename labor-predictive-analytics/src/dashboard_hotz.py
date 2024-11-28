@@ -20,7 +20,7 @@ app = dash.Dash(
 
 # Initialize components
 preprocessor = DataPreprocessor(fiscal_start_month=10)
-# predictor = TimeSeriesPredictor()
+predictor = TimeSeriesPredictor()
 simulator = MonteCarloSimulator()
 
 # Load and prepare data
@@ -635,20 +635,19 @@ def update_dept_comparison(start_date, end_date):
 def update_forecast(start_date, end_date, selected_dept):
     filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
-    # Create new predictor instance for this forecast
-    predictor = TimeSeriesPredictor()
-
-    # Prepare data for Prophet
-    prophet_data = pd.DataFrame(
-        {"ds": filtered_data["date"], "y": filtered_data["total_hours_charged"]}
-    )
-
-    # Fit Prophet model
-    predictor.fit_prophet(prophet_data)
+    # Fit time series model
+    ts_data = filtered_data["total_hours_charged"].values
+    predictor.fit_holtwinters(ts_data)
 
     # Generate forecast for next 30 days
     forecast_horizon = 30
-    forecast = predictor.predict(forecast_horizon)
+    mean_forecast, lower_bound, upper_bound = simulator.generate_scenarios(
+        predictor.model, filtered_data, forecast_horizon
+    )
+
+    # Create forecast dates
+    last_date = pd.to_datetime(filtered_data["date"].max())
+    forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[1:]
 
     # Create figure
     fig = go.Figure()
@@ -666,8 +665,8 @@ def update_forecast(start_date, end_date, selected_dept):
     # Add forecast
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat"],
+            x=forecast_dates,
+            y=mean_forecast,
             name="Forecast",
             line=dict(color="#e74c3c", dash="dash"),
         )
@@ -676,8 +675,8 @@ def update_forecast(start_date, end_date, selected_dept):
     # Add confidence interval
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat_upper"],
+            x=forecast_dates,
+            y=upper_bound,
             mode="lines",
             line=dict(width=0),
             showlegend=False,
@@ -687,8 +686,8 @@ def update_forecast(start_date, end_date, selected_dept):
 
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat_lower"],
+            x=forecast_dates,
+            y=lower_bound,
             mode="lines",
             line=dict(width=0),
             fillcolor="rgba(231, 76, 60, 0.2)",
@@ -727,20 +726,19 @@ def update_forecast(start_date, end_date, selected_dept):
 def update_fiscal_year_plot(start_date, end_date, selected_dept):
     filtered_data, _ = filter_data(start_date, end_date, selected_dept)
 
-    # Create new predictor instance for this forecast
-    predictor = TimeSeriesPredictor()
-
-    # Prepare data for Prophet
-    prophet_data = pd.DataFrame(
-        {"ds": filtered_data["date"], "y": filtered_data["total_hours_charged"]}
-    )
-
-    # Fit Prophet model
-    predictor.fit_prophet(prophet_data)
+    # Fit time series model
+    ts_data = filtered_data["total_hours_charged"].values
+    predictor.fit_holtwinters(ts_data)
 
     # Generate forecast for next fiscal year (approximately 252 trading days)
     forecast_horizon = 252
-    forecast = predictor.predict(forecast_horizon)
+    mean_forecast, lower_bound, upper_bound = simulator.generate_scenarios(
+        predictor.model, filtered_data, forecast_horizon
+    )
+
+    # Create forecast dates
+    last_date = pd.to_datetime(filtered_data["date"].max())
+    forecast_dates = pd.date_range(start=last_date, periods=forecast_horizon + 1)[1:]
 
     fig = go.Figure()
 
@@ -757,8 +755,8 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
     # Add forecast and confidence intervals
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat"],
+            x=forecast_dates,
+            y=mean_forecast,
             name="Forecast",
             line=dict(color="#e74c3c", dash="dash"),
         )
@@ -766,8 +764,8 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
 
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat_upper"],
+            x=forecast_dates,
+            y=upper_bound,
             mode="lines",
             line=dict(width=0),
             showlegend=False,
@@ -776,8 +774,8 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
 
     fig.add_trace(
         go.Scatter(
-            x=forecast["ds"],
-            y=forecast["yhat_lower"],
+            x=forecast_dates,
+            y=lower_bound,
             mode="lines",
             line=dict(width=0),
             fillcolor="rgba(231, 76, 60, 0.2)",
@@ -786,10 +784,10 @@ def update_fiscal_year_plot(start_date, end_date, selected_dept):
         )
     )
 
-    # Add fiscal year boundaries (rest of the code remains the same)
+    # Add fiscal year boundaries
     fiscal_years = filtered_data["fiscal_year"].unique()
     for fy in fiscal_years:
-        fy_start = pd.Timestamp(f"{fy}-10-01")
+        fy_start = pd.Timestamp(f"{fy}-10-01")  # October 1st
         if (
             fy_start >= filtered_data["date"].min()
             and fy_start <= filtered_data["date"].max()
