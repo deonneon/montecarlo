@@ -1,5 +1,7 @@
 *.csv
 *.json
+*.png
+.DS_Store
 
 labor-predictive-analytics_contents.txt
 filetree.txt
