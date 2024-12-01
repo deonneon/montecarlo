@@ -65,7 +65,7 @@ def perform_prophet_analysis(df):
 
     # Train Prophet model
     model = Prophet(
-        yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True
+        yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True``
     )
     model.add_country_holidays(country_name="US")
     model.fit(prophet_data)
@@ -80,7 +80,7 @@ def perform_prophet_analysis(df):
 def perform_employee_prophet_analysis(df):
     employee_forecasts = []
 
-    for employee in df["userid"].unique():
+    for employee in df["userid"].unique():I 
         # Filter data for this employee (keeping daily data)
         emp_data = (
             df[df["userid"] == employee]
@@ -243,16 +243,23 @@ def perform_monte_carlo(df, n_simulations=1000):
 
 # 5. Prepare data for visualization
 def prepare_for_visualization(weekly_data, forecast, monte_carlo_results):
-    # Combine actual and forecasted data
-    viz_data = pd.DataFrame(
-        {
-            "date": forecast["ds"],
-            "actual_hours": weekly_data.groupby("date")["total_hours_charged"].sum(),
-            "forecast": forecast["yhat"],
-            "forecast_lower": forecast["yhat_lower"],
-            "forecast_upper": forecast["yhat_upper"],
-        }
-    )
+    # Get the last date of actual data
+    last_actual_date = weekly_data['date'].max()
+    
+    # Create actual hours series properly aligned with dates
+    actual_hours = weekly_data.groupby('date')['total_hours_charged'].sum()
+    
+    # Create the visualization dataframe
+    viz_data = pd.DataFrame({
+        'date': forecast['ds'],
+        'forecast': forecast['yhat'],
+        'forecast_lower': forecast['yhat_lower'],
+        'forecast_upper': forecast['yhat_upper'],
+    })
+    
+    # Only include actual hours for dates up to last_actual_date
+    viz_data['actual_hours'] = actual_hours
+    viz_data.loc[viz_data['date'] > last_actual_date, 'actual_hours'] = np.nan
 
     # Add Monte Carlo results for the future dates
     future_dates = pd.date_range(
@@ -327,6 +334,17 @@ def main():
 
     print("\nPerforming employee-level Prophet analysis...")
     employee_prophet_results = perform_employee_prophet_analysis(df)
+
+    # When saving the forecast data, add this cleaning step
+    def clean_column_name(col_name):
+        # Replace spaces and parentheses with underscores
+        clean_name = col_name.replace(' ', '_').replace('(', '').replace(')', '').replace('.', '')
+        # Remove any other special characters if present
+        clean_name = ''.join(c if c.isalnum() or c == '_' else '' for c in clean_name)
+        return clean_name.lower()
+
+    # Before saving to CSV/Hive, clean the column names
+    employee_prophet_results["employee_forecasts"].rename(columns=clean_column_name, inplace=True)
 
     # Save as single CSV with all employee forecasts
     employee_prophet_results["employee_forecasts"].to_csv(
